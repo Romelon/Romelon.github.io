@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+
+{% block title %} {{ title }} {% endblock %}
+
+{% block app_content %}
+
+<style>
+
+.dt-right {
+    text-align: right !important;
+}
+
+.positioning-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ─── Data-bar cell (Total Equity % column) ─────────────────────────── */
+.bar-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 22px;
+    overflow: hidden;
+}
+
+.bar-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    z-index: 0;
+    transition: width 0.3s ease;
+    /* colour is set inline per column */
+}
+
+.bar-label {
+    position: relative;
+    z-index: 1;
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+/* ─── General table polish ───────────────────────────────────────────── */
+.prime-datatable thead th {
+    background-color: #2d3748;
+    color: #fff;
+    font-size: 0.80rem;
+    white-space: nowrap;
+    vertical-align: middle;
+    border-bottom: 2px solid #4a5568;
+}
+
+.prime-datatable tbody tr:nth-child(even) {
+    background-color: #f7f8fa;
+}
+
+.prime-datatable tbody tr:hover {
+    background-color: #edf2f7 !important;
+}
+
+.prime-datatable tbody td {
+    font-size: 0.83rem;
+    vertical-align: middle;
+    padding: 5px 8px;
+}
+
+.prime-datatable {
+    border-collapse: collapse;
+}
+
+.prime-datatable tbody td,
+.prime-datatable thead th {
+    border: 1px solid #dee2e6;
+}
+
+</style>
+
+<div class="container">
+    <br>
+    <h1 class="prime-h1"> Equity Portfolio Monitor </h1>
+    <ul class="nav f-nav-tabs nav-justified">
+        <li class="nav-item">
+            <a class="f-nav-link active " href="#nav-1" data-bs-toggle="tab" data-bs-target="#nav-1"
+                aria-controls="nav-1"> Positioning</a>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="nav-tabContent">
+        <div class="tab-pane fade show active " id="nav-1" role="tabpanel" aria-labelledby="nav-1-tab">
+            <br>
+            <div id="loaddate" style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                <select class="form-select" id="view" name="view" style="width: 400px;"
+                    required onchange="update_tables()">
+                    <option value="Beta" selected='selected'>Beta</option>
+                    <option value="Alpha">Alpha</option>
+                </select>
+                <input type="date" class="form-control" value="{{p_val_date}}" id="valuation_date" name="valuation_date"
+                    style="width: 400px;" required onchange="update_tables()">
+            </div>
+            <br>
+            <div id="equitypositioning">
+                <h2 class="prime-h2">Equity Positioning</h2>
+                <span id="positioning_table"></span>
+                <br><br>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+// Returns a DataTables render function that draws a proportional data-bar
+// behind the percentage label.  bgColor / borderColor are CSS colour strings.
+function barRender(bgColor, borderColor) {
+    return function(data, type) {
+        if (type === 'display') {
+            var value  = parseFloat(data) || 0;
+            var barPct = Math.min(Math.abs(value), 100).toFixed(2);
+            return '<div class="bar-cell">'
+                 +   '<div class="bar-fill" style="width:' + barPct + '%;'
+                 +     'background:' + bgColor + ';'
+                 +     'border-right:2px solid ' + borderColor + ';"></div>'
+                 +   '<span class="bar-label">' + value.toFixed(1) + '%</span>'
+                 + '</div>';
+        }
+        return data;
+    };
+}
+
+function make_data_table(tableId, columns, table_data) {
+
+    const table_id = '#' + tableId;
+
+    // Destroy existing DataTable if it exists
+    if ($.fn.DataTable.isDataTable(table_id)) {
+        $(table_id).DataTable().destroy();
+        $(table_id).empty();
+    }
+
+    // Build thead dynamically
+    var thead = '<thead><tr>';
+    columns.forEach(function(column) {
+        thead += '<th>' + column.title + '</th>';
+    });
+    thead += '</tr></thead>';
+    $(table_id).append(thead);
+
+    $(table_id).DataTable({
+
+        data: table_data,
+        columns: columns,
+        pageLength: 10,
+        lengthMenu: [10, 25, 50, 100],
+        select: true,
+        paging: false,
+        searching: false,
+        info: false,
+        ordering: false,
+
+        columnDefs: [
+
+            // ── Fund size: right-aligned integer ─────────────────────
+            {
+                targets: [3],
+                className: "dt-right",
+                render: $.fn.dataTable.render.number(',', '.', 0, '', '')
+            },
+
+            // ── Equity Exposure (5): pink bar ─────────────────────────
+            {
+                targets: [5],
+                width: "10%",
+                className: "text-center",
+                render: barRender('rgba(220,20,100,0.40)', 'rgba(180,0,60,0.55)')
+            },
+
+            // ── Derivatives (6): plain text, no bar ───────────────────
+            {
+                targets: [6],
+                width: "10%",
+                className: "text-center",
+                render: function(data, type) {
+                    if (type === 'display') return (parseFloat(data) || 0).toFixed(1) + '%';
+                    return data;
+                }
+            },
+
+            // ── Futures (7): blue bar ─────────────────────────────────
+            {
+                targets: [7],
+                width: "10%",
+                className: "text-center",
+                render: barRender('rgba(70,130,220,0.45)', 'rgba(30,80,180,0.60)')
+            },
+
+            // ── TRS (8): light red bar ────────────────────────────────
+            {
+                targets: [8],
+                width: "10%",
+                className: "text-center",
+                render: barRender('rgba(220,80,80,0.40)', 'rgba(180,30,30,0.55)')
+            },
+
+            // ── ELN (9): light green bar ──────────────────────────────
+            {
+                targets: [9],
+                width: "10%",
+                className: "text-center",
+                render: barRender('rgba(0,176,80,0.40)', 'rgba(0,130,50,0.55)')
+            },
+
+            // ── Physical (10): yellow bar ─────────────────────────────
+            {
+                targets: [10],
+                width: "10%",
+                className: "text-center",
+                render: barRender('rgba(255,200,0,0.55)', 'rgba(200,150,0,0.65)')
+            },
+
+            // ── Un-Equitised (11): plain text, no bar ────────────────
+            {
+                targets: [11],
+                width: "10%",
+                className: "text-center",
+                render: function(data, type) {
+                    if (type === 'display') return (parseFloat(data) || 0).toFixed(1) + '%';
+                    return data;
+                }
+            },
+
+            // ── Hidden columns ────────────────────────────────────────
+            { targets: [12], visible: false },
+
+            // ── Stocks column: wider ──────────────────────────────────
+            { targets: [1], width: "40%" }
+        ]
+
+    });
+}
+
+
+function update_tables() {
+
+    $('#modal_loading').modal('show');
+
+    // Clear old tables
+    document.getElementById('positioning_table').innerHTML = '';
+
+    var lastTab = localStorage.getItem('lastTab');
+
+    $('a[data-bs-toggle="tab"]').on('shown.bs.tab', function(e) {
+        localStorage.setItem('lastTab', $(this).attr('href'));
+    });
+
+    if (lastTab) {
+        $('[href="' + lastTab + '"]').tab('show');
+    }
+
+    $('a[data-bs-toggle="tab"]').on('shown.bs.tab', function() {
+        $($.fn.dataTable.tables(true)).DataTable().columns.adjust();
+    });
+
+    var val_date = document.getElementById("valuation_date").value;
+    var url = '/fast/equities/equity-beta-positioning?val_date=' + val_date + '&output=json';
+
+    $.getJSON(url, function(data) {
+
+        var tableData    = data.data;
+        var tableColumns = data.columns;
+
+        for (const [tableName, subTableData] of Object.entries(tableData)) {
+            var tableId  = tableName.replace(' ', '_');
+            var date     = subTableData[0].Datestamp;
+            var strategy = subTableData[0].Strategy;
+
+            document.getElementById('positioning_table').insertAdjacentHTML('beforeend',
+                '<br>'
+              + '<div class="positioning-header">'
+              +   '<p class="prime-h3">' + strategy + '</p>'
+              +   '<p class="prime-h3">' + date + '</p>'
+              + '</div>'
+              + '<table id="' + tableId + '" class="table prime-datatable"></table>'
+            );
+
+            make_data_table(tableId, tableColumns, subTableData);
+        }
+
+        $('#modal_loading').modal('hide');
+    });
+}
+
+$(document).ready(function() {
+    update_tables();
+});
+
+</script>
+
+{% endblock %}
