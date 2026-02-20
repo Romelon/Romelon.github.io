@@ -32,10 +32,9 @@
     left: 0;
     top: 0;
     height: 100%;
-    background: rgba(220, 20, 100, 0.40);   /* pink / crimson, like Excel data bars */
     z-index: 0;
-    border-right: 2px solid rgba(180, 0, 60, 0.55);
     transition: width 0.3s ease;
+    /* colour is set inline per column */
 }
 
 .bar-label {
@@ -43,15 +42,6 @@
     z-index: 1;
     font-weight: 500;
     font-size: 0.85rem;
-}
-
-/* ─── Coloured % cells (Derivatives, Futures, TRS, ELN, Physical, Un-Equitised) */
-td.pct-positive {
-    background-color: rgba(0, 176, 80, 0.18) !important;
-}
-
-td.pct-negative {
-    background-color: rgba(220, 50, 50, 0.18) !important;
 }
 
 /* ─── General table polish ───────────────────────────────────────────── */
@@ -123,6 +113,24 @@ td.pct-negative {
 
 <script>
 
+// Returns a DataTables render function that draws a proportional data-bar
+// behind the percentage label.  bgColor / borderColor are CSS colour strings.
+function barRender(bgColor, borderColor) {
+    return function(data, type) {
+        if (type === 'display') {
+            var value  = parseFloat(data) || 0;
+            var barPct = Math.min(Math.abs(value), 100).toFixed(2);
+            return '<div class="bar-cell">'
+                 +   '<div class="bar-fill" style="width:' + barPct + '%;'
+                 +     'background:' + bgColor + ';'
+                 +     'border-right:2px solid ' + borderColor + ';"></div>'
+                 +   '<span class="bar-label">' + value.toFixed(1) + '%</span>'
+                 + '</div>';
+        }
+        return data;
+    };
+}
+
 function make_data_table(tableId, columns, table_data) {
 
     const table_id = '#' + tableId;
@@ -162,46 +170,70 @@ function make_data_table(tableId, columns, table_data) {
                 render: $.fn.dataTable.render.number(',', '.', 0, '', '')
             },
 
-            // ── Total Equity % (index 5): pink data-bar ──────────────
+            // ── Equity Exposure (5): pink bar ─────────────────────────
             {
                 targets: [5],
                 width: "10%",
                 className: "text-center",
-                render: function(data, type, row) {
-                    if (type === 'display') {
-                        var value  = parseFloat(data) || 0;
-                        // Cap bar width at 100 % so it doesn't overflow the cell
-                        var barPct = Math.min(Math.abs(value), 100).toFixed(2);
-                        return '<div class="bar-cell">'
-                             +   '<div class="bar-fill" style="width:' + barPct + '%"></div>'
-                             +   '<span class="bar-label">' + value.toFixed(1) + '%</span>'
-                             + '</div>';
-                    }
+                render: barRender('rgba(220,20,100,0.40)', 'rgba(180,0,60,0.55)')
+            },
+
+            // ── Derivatives (6): plain text, no bar ───────────────────
+            {
+                targets: [6],
+                width: "10%",
+                className: "text-center",
+                render: function(data, type) {
+                    if (type === 'display') return (parseFloat(data) || 0).toFixed(1) + '%';
                     return data;
                 }
             },
 
-            // ── Derivatives / Futures / TRS / ELN / Physical / Un-Equitised (6-10)
-            //    Render as "X.X%" and colour the cell green/red
+            // ── Futures (7): blue bar ─────────────────────────────────
             {
-                targets: [6, 7, 8, 9, 10],
+                targets: [7],
                 width: "10%",
                 className: "text-center",
-                render: function(data, type, row) {
-                    if (type === 'display') {
-                        return (parseFloat(data) || 0).toFixed(1) + '%';
-                    }
+                render: barRender('rgba(70,130,220,0.45)', 'rgba(30,80,180,0.60)')
+            },
+
+            // ── TRS (8): light red bar ────────────────────────────────
+            {
+                targets: [8],
+                width: "10%",
+                className: "text-center",
+                render: barRender('rgba(220,80,80,0.40)', 'rgba(180,30,30,0.55)')
+            },
+
+            // ── ELN (9): light green bar ──────────────────────────────
+            {
+                targets: [9],
+                width: "10%",
+                className: "text-center",
+                render: barRender('rgba(0,176,80,0.40)', 'rgba(0,130,50,0.55)')
+            },
+
+            // ── Physical (10): yellow bar ─────────────────────────────
+            {
+                targets: [10],
+                width: "10%",
+                className: "text-center",
+                render: barRender('rgba(255,200,0,0.55)', 'rgba(200,150,0,0.65)')
+            },
+
+            // ── Un-Equitised (11): plain text, no bar ────────────────
+            {
+                targets: [11],
+                width: "10%",
+                className: "text-center",
+                render: function(data, type) {
+                    if (type === 'display') return (parseFloat(data) || 0).toFixed(1) + '%';
                     return data;
-                },
-                createdCell: function(td, cellData) {
-                    var v = parseFloat(cellData) || 0;
-                    if (v > 0)       $(td).addClass('pct-positive');
-                    else if (v < 0)  $(td).addClass('pct-negative');
                 }
             },
 
             // ── Hidden columns ────────────────────────────────────────
-            { targets: [11, 12], visible: false },
+            { targets: [12], visible: false },
 
             // ── Stocks column: wider ──────────────────────────────────
             { targets: [1], width: "40%" }
