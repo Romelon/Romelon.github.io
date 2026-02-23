@@ -77,6 +77,66 @@
     border: 1px solid #dee2e6;
 }
 
+/* ─── Clickable fund code ────────────────────────────────────────────── */
+.fund-link {
+    color: var(--bs-link-color, #0d6efd);
+    text-decoration: underline;
+    cursor: pointer;
+    font-weight: 600;
+}
+.fund-link:hover {
+    opacity: 0.75;
+}
+
+/* ─── Fund detail modal – exposure bar rows ──────────────────────────── */
+.fund-modal-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin-top: 6px;
+}
+
+.fund-modal-metric-row {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    align-items: center;
+    gap: 12px;
+}
+
+.fund-modal-metric-label {
+    font-size: 0.82rem;
+    font-weight: 500;
+    text-align: right;
+    color: #4a5568;
+    white-space: nowrap;
+}
+
+.fund-modal-bar-wrap {
+    position: relative;
+    height: 22px;
+    background: #eef0f2;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.fund-modal-bar-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    z-index: 0;
+}
+
+.fund-modal-bar-value {
+    position: relative;
+    z-index: 1;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0 8px;
+}
+
 </style>
 
 <div class="container">
@@ -111,6 +171,32 @@
     </div>
 </div>
 
+<!-- ── Fund Detail Modal ──────────────────────────────────────────────── -->
+<div class="modal fade" id="fundModal" tabindex="-1"
+     aria-labelledby="fundModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0" id="fundModalTitle"></h5>
+                    <small class="text-muted" id="fundModalSubtitle"></small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body" id="fundModalBody"></div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary"
+                        data-bs-dismiss="modal">Close</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
 <script>
 
 // Returns a DataTables render function that draws a proportional data-bar
@@ -129,6 +215,76 @@ function barRender(bgColor, borderColor) {
         }
         return data;
     };
+}
+
+// Colour config shared between the table bars and the modal bars.
+// Keys are column indices; columns without an entry get plain text.
+var MODAL_BAR_COLORS = {
+    5:  { bg: 'rgba(220,20,100,0.40)',  border: 'rgba(180,0,60,0.55)'  },  // Equity Exposure – pink
+    7:  { bg: 'rgba(70,130,220,0.45)',  border: 'rgba(30,80,180,0.60)' },  // Futures          – blue
+    8:  { bg: 'rgba(220,80,80,0.40)',   border: 'rgba(180,30,30,0.55)' },  // TRS              – light red
+    9:  { bg: 'rgba(0,176,80,0.40)',    border: 'rgba(0,130,50,0.55)'  },  // ELN              – light green
+    10: { bg: 'rgba(255,200,0,0.55)',   border: 'rgba(200,150,0,0.65)' }   // Physical         – yellow
+};
+
+// Populate and show the fund detail modal for a clicked row.
+// rowData  – raw DataTables row object (the original JS object from the API)
+// columns  – DataTables columns array  [{title, data, ...}, ...]
+function populateFundModal(rowData, columns) {
+
+    // Helper: get the value for column i from the row data
+    function val(i) {
+        var col = columns[i];
+        if (!col) return '';
+        return (col.data !== undefined && rowData[col.data] !== undefined)
+            ? rowData[col.data]
+            : rowData[i];
+    }
+
+    // ── Modal header: fund code + name ────────────────────────────────
+    $('#fundModalTitle').text(val(0));
+    $('#fundModalSubtitle').text(val(1));
+
+    // ── Build body ────────────────────────────────────────────────────
+    var html = '';
+
+    // Info pills row (strategy, date, fund size)
+    var strategy = rowData.Strategy  || rowData['Strategy']  || '';
+    var date     = rowData.Datestamp || rowData['Datestamp'] || '';
+    var fundSize = parseFloat(val(3));
+
+    html += '<div class="d-flex flex-wrap gap-3 mb-3 pb-3 border-bottom">';
+    if (strategy) html += '<div><span class="text-muted small">Strategy</span><br><strong>' + strategy + '</strong></div>';
+    if (date)     html += '<div><span class="text-muted small">Date</span><br><strong>' + date + '</strong></div>';
+    if (fundSize) html += '<div><span class="text-muted small">' + (columns[3] ? columns[3].title : 'Fund Size') + '</span>'
+                        + '<br><strong>' + fundSize.toLocaleString('en-US', {maximumFractionDigits: 0}) + '</strong></div>';
+    html += '</div>';
+
+    // Exposure bar rows (columns 5–11)
+    html += '<h6 class="mb-2 text-muted" style="font-size:0.78rem; text-transform:uppercase; letter-spacing:.05em;">Equity Exposures</h6>';
+    html += '<div class="fund-modal-metrics">';
+
+    [5, 6, 7, 8, 9, 10, 11].forEach(function(i) {
+        if (!columns[i]) return;
+        var pct    = parseFloat(val(i)) || 0;
+        var colors = MODAL_BAR_COLORS[i];
+        var barPct = Math.min(Math.abs(pct), 100).toFixed(2);
+
+        html += '<div class="fund-modal-metric-row">';
+        html +=   '<div class="fund-modal-metric-label">' + columns[i].title + '</div>';
+        html +=   '<div class="fund-modal-bar-wrap">';
+        if (colors) {
+            html += '<div class="fund-modal-bar-fill" style="width:' + barPct + '%;'
+                  + 'background:' + colors.bg + ';border-right:2px solid ' + colors.border + ';"></div>';
+        }
+        html +=     '<span class="fund-modal-bar-value">' + pct.toFixed(1) + '%</span>';
+        html +=   '</div>';
+        html += '</div>';
+    });
+
+    html += '</div>';
+
+    $('#fundModalBody').html(html);
 }
 
 function make_data_table(tableId, columns, table_data) {
@@ -162,6 +318,16 @@ function make_data_table(tableId, columns, table_data) {
         ordering: false,
 
         columnDefs: [
+
+            // ── Fund code (0): clickable link ─────────────────────────
+            {
+                targets: [0],
+                render: function(data, type) {
+                    if (type === 'display')
+                        return '<span class="fund-link">' + data + '</span>';
+                    return data;
+                }
+            },
 
             // ── Fund size: right-aligned integer ─────────────────────
             {
@@ -239,6 +405,14 @@ function make_data_table(tableId, columns, table_data) {
             { targets: [1], width: "40%" }
         ]
 
+    });
+
+    // Open fund detail modal when the portfolio code cell is clicked
+    $(table_id + ' tbody').on('click', '.fund-link', function() {
+        var dt      = $(table_id).DataTable();
+        var rowData = dt.row($(this).closest('tr')).data();
+        populateFundModal(rowData, columns);
+        $('#fundModal').modal('show');
     });
 }
 
