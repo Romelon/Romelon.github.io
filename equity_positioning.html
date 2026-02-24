@@ -46,7 +46,7 @@
 
 /* ─── General table polish ───────────────────────────────────────────── */
 .prime-datatable thead th {
-    background-color: #2d3748;
+    background-color: #002855;
     color: #fff;
     font-size: 0.80rem;
     white-space: nowrap;
@@ -220,11 +220,11 @@ function barRender(bgColor, borderColor) {
 // Colour config shared between the table bars and the modal bars.
 // Keys are column indices; columns without an entry get plain text.
 var MODAL_BAR_COLORS = {
-    5:  { bg: 'rgba(220,20,100,0.40)',  border: 'rgba(180,0,60,0.55)'  },  // Equity Exposure – pink
-    7:  { bg: 'rgba(70,130,220,0.45)',  border: 'rgba(30,80,180,0.60)' },  // Futures          – blue
-    8:  { bg: 'rgba(220,80,80,0.40)',   border: 'rgba(180,30,30,0.55)' },  // TRS              – light red
-    9:  { bg: 'rgba(0,176,80,0.40)',    border: 'rgba(0,130,50,0.55)'  },  // ELN              – light green
-    10: { bg: 'rgba(255,200,0,0.55)',   border: 'rgba(200,150,0,0.65)' }   // Physical         – yellow
+    4:  { bg: 'rgba(198,54,99,0.40)',   border: 'rgba(198,54,99,0.55)'  },  // Equity Exposure – Crimson
+    6:  { bg: 'rgba(0,148,213,0.45)',   border: 'rgba(0,148,213,0.60)'  },  // Futures          – Blue
+    7:  { bg: 'rgba(229,85,79,0.40)',   border: 'rgba(229,85,79,0.55)'  },  // TRS              – Red
+    8:  { bg: 'rgba(0,143,82,0.40)',    border: 'rgba(0,143,82,0.55)'   },  // ELN              – Green
+    9:  { bg: 'rgba(187,179,35,0.55)',  border: 'rgba(187,179,35,0.65)' }   // Physical         – Olive
 };
 
 // Populate and show the fund detail modal for a clicked row.
@@ -260,11 +260,11 @@ function populateFundModal(rowData, columns) {
                         + '<br><strong>' + fundSize.toLocaleString('en-US', {maximumFractionDigits: 0}) + '</strong></div>';
     html += '</div>';
 
-    // Exposure bar rows (columns 5–11)
+    // Exposure bar rows (columns 4–10)
     html += '<h6 class="mb-2 text-muted" style="font-size:0.78rem; text-transform:uppercase; letter-spacing:.05em;">Equity Exposures</h6>';
     html += '<div class="fund-modal-metrics">';
 
-    [5, 6, 7, 8, 9, 10, 11].forEach(function(i) {
+    [4, 5, 6, 7, 8, 9, 10].forEach(function(i) {
         if (!columns[i]) return;
         var pct    = parseFloat(val(i)) || 0;
         var colors = MODAL_BAR_COLORS[i];
@@ -329,24 +329,24 @@ function make_data_table(tableId, columns, table_data) {
                 }
             },
 
-            // ── Fund size: right-aligned integer ─────────────────────
+            // ── Fund size (3): right-aligned integer ──────────────────
             {
                 targets: [3],
                 className: "dt-right",
                 render: $.fn.dataTable.render.number(',', '.', 0, '', '')
             },
 
-            // ── Equity Exposure (5): pink bar ─────────────────────────
+            // ── Equity Exposure (4): Crimson bar ──────────────────────
             {
-                targets: [5],
+                targets: [4],
                 width: "10%",
                 className: "text-center",
-                render: barRender('rgba(220,20,100,0.40)', 'rgba(180,0,60,0.55)')
+                render: barRender('rgba(198,54,99,0.40)', 'rgba(198,54,99,0.55)')
             },
 
-            // ── Derivatives (6): plain text, no bar ───────────────────
+            // ── Derivatives (5): plain text, no bar ───────────────────
             {
-                targets: [6],
+                targets: [5],
                 width: "10%",
                 className: "text-center",
                 render: function(data, type) {
@@ -355,41 +355,41 @@ function make_data_table(tableId, columns, table_data) {
                 }
             },
 
-            // ── Futures (7): blue bar ─────────────────────────────────
+            // ── Futures (6): Blue bar ─────────────────────────────────
+            {
+                targets: [6],
+                width: "10%",
+                className: "text-center",
+                render: barRender('rgba(0,148,213,0.45)', 'rgba(0,148,213,0.60)')
+            },
+
+            // ── TRS (7): Red bar ──────────────────────────────────────
             {
                 targets: [7],
                 width: "10%",
                 className: "text-center",
-                render: barRender('rgba(70,130,220,0.45)', 'rgba(30,80,180,0.60)')
+                render: barRender('rgba(229,85,79,0.40)', 'rgba(229,85,79,0.55)')
             },
 
-            // ── TRS (8): light red bar ────────────────────────────────
+            // ── ELN (8): Green bar ────────────────────────────────────
             {
                 targets: [8],
                 width: "10%",
                 className: "text-center",
-                render: barRender('rgba(220,80,80,0.40)', 'rgba(180,30,30,0.55)')
+                render: barRender('rgba(0,143,82,0.40)', 'rgba(0,143,82,0.55)')
             },
 
-            // ── ELN (9): light green bar ──────────────────────────────
+            // ── Physical (9): Olive bar ───────────────────────────────
             {
                 targets: [9],
                 width: "10%",
                 className: "text-center",
-                render: barRender('rgba(0,176,80,0.40)', 'rgba(0,130,50,0.55)')
+                render: barRender('rgba(187,179,35,0.55)', 'rgba(187,179,35,0.65)')
             },
 
-            // ── Physical (10): yellow bar ─────────────────────────────
+            // ── Un-Equitised (10): plain text, no bar ────────────────
             {
                 targets: [10],
-                width: "10%",
-                className: "text-center",
-                render: barRender('rgba(255,200,0,0.55)', 'rgba(200,150,0,0.65)')
-            },
-
-            // ── Un-Equitised (11): plain text, no bar ────────────────
-            {
-                targets: [11],
                 width: "10%",
                 className: "text-center",
                 render: function(data, type) {
@@ -399,9 +399,9 @@ function make_data_table(tableId, columns, table_data) {
             },
 
             // ── Hidden columns ────────────────────────────────────────
-            { targets: [12], visible: false },
+            { targets: [11, 12], visible: false },
 
-            // ── Stocks column: wider ──────────────────────────────────
+            // ── Name column: wider ────────────────────────────────────
             { targets: [1], width: "40%" }
         ]
 
