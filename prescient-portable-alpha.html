@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prescient — Portable Alpha Equity Strategy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+/* =========================================
+   CSS CUSTOM PROPERTIES
+   ========================================= */
+:root {
+    --navy: #0a1628;
+    --navy-mid: #112240;
+    --navy-light: #1a3a5c;
+    --blue: #00a8e8;
+    --gold: #e8a42d;
+    --white: #ffffff;
+    --text-secondary: #8eb4d4;
+    --border: rgba(0,168,232,0.2);
+    --font: 'Manrope', sans-serif;
+    --title-size: clamp(1.6rem, 4vw, 3.2rem);
+    --h2-size: clamp(1.2rem, 3vw, 2.2rem);
+    --h3-size: clamp(1rem, 2.2vw, 1.5rem);
+    --body-size: clamp(0.7rem, 1.3vw, 1rem);
+    --small-size: clamp(0.6rem, 0.9vw, 0.8rem);
+    --slide-padding: clamp(1.2rem, 4vw, 4rem);
+    --content-gap: clamp(0.5rem, 1.5vw, 1.5rem);
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+    height: 100%;
+    overflow-x: hidden;
+}
+
+body {
+    font-family: var(--font);
+    background: var(--navy);
+    color: var(--white);
+    height: 100%;
+    overflow-x: hidden;
+}
+
+/* =========================================
+   SLIDE BASE
+   ========================================= */
+.slide {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    padding: var(--slide-padding);
+}
+
+.slide-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-height: 100%;
+    overflow: hidden;
+    gap: var(--content-gap);
+}
+
+/* =========================================
+   PROGRESS BAR
+   ========================================= */
+.progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    background: var(--blue);
+    z-index: 1000;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+/* =========================================
+   NAV DOTS
+   ========================================= */
+.nav-dots {
+    position: fixed;
+    right: clamp(0.5rem, 1.5vw, 1.5rem);
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 999;
+}
+
+.nav-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: none;
+    padding: 0;
+}
+
+.nav-dot.active {
+    background: var(--blue);
+    transform: scale(1.4);
+}
+
+.nav-dot:hover { background: rgba(255,255,255,0.5); }
+
+/* =========================================
+   SLIDE COUNTER & HINT
+   ========================================= */
+.slide-counter {
+    position: fixed;
+    bottom: clamp(0.5rem, 2vw, 1.5rem);
+    left: clamp(0.5rem, 2vw, 1.5rem);
+    font-size: var(--small-size);
+    color: var(--text-secondary);
+    z-index: 999;
+    opacity: 0.7;
+}
+
+.keyboard-hint {
+    position: fixed;
+    bottom: clamp(0.5rem, 2vw, 1.5rem);
+    right: clamp(2rem, 4vw, 4rem);
+    font-size: var(--small-size);
+    color: var(--text-secondary);
+    z-index: 999;
+    opacity: 0.6;
+    transition: opacity 1s ease;
+}
+
+.keyboard-hint.hidden { opacity: 0; }
+
+/* =========================================
+   SLIDE NUMBER PILL
+   ========================================= */
+.slide-num {
+    position: absolute;
+    top: clamp(0.5rem, 2vw, 1.5rem);
+    left: clamp(0.5rem, 2vw, 1.5rem);
+    background: var(--blue);
+    color: var(--white);
+    font-size: var(--small-size);
+    font-weight: 700;
+    padding: 0.15em 0.6em;
+    border-radius: 4px;
+    z-index: 10;
+}
+
+/* =========================================
+   REVEAL ANIMATIONS
+   ========================================= */
+.reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
+}
+
+.slide.visible .reveal {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.reveal:nth-child(1) { transition-delay: 0.1s; }
+.reveal:nth-child(2) { transition-delay: 0.2s; }
+.reveal:nth-child(3) { transition-delay: 0.3s; }
+.reveal:nth-child(4) { transition-delay: 0.4s; }
+.reveal:nth-child(5) { transition-delay: 0.5s; }
+
+/* =========================================
+   TYPOGRAPHY
+   ========================================= */
+h1 { font-size: var(--title-size); font-weight: 800; line-height: 1.15; letter-spacing: -0.02em; }
+h2 { font-size: var(--h2-size); font-weight: 800; line-height: 1.2; }
+h3 { font-size: var(--h3-size); font-weight: 700; line-height: 1.3; }
+p, li { font-size: var(--body-size); line-height: 1.5; color: var(--text-secondary); }
+.sub { font-size: clamp(0.8rem, 1.5vw, 1.1rem); color: var(--blue); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.source { font-size: var(--small-size); color: var(--text-secondary); opacity: 0.6; margin-top: auto; }
+
+/* =========================================
+   CARDS & GRIDS
+   ========================================= */
+.card {
+    background: var(--navy-mid);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: clamp(0.8rem, 2vw, 1.5rem);
+}
+
+.card h3 { color: var(--white); margin-bottom: 0.3em; }
+.card p { font-size: var(--small-size); }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(0.5rem, 1.5vw, 1rem); }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(0.5rem, 1.5vw, 1rem); }
+.grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: clamp(0.5rem, 1.5vw, 1rem); }
+
+@media (max-width: 600px) {
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+}
+
+/* =========================================
+   STAT CARDS
+   ========================================= */
+.stat-card {
+    background: var(--navy-mid);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: clamp(0.6rem, 1.5vw, 1.2rem);
+    text-align: center;
+}
+
+.stat-card .stat-value {
+    font-size: clamp(1.2rem, 3vw, 2.5rem);
+    font-weight: 800;
+    color: var(--blue);
+}
+
+.stat-card .stat-label {
+    font-size: var(--small-size);
+    color: var(--text-secondary);
+}
+
+/* =========================================
+   SECTION DIVIDERS
+   ========================================= */
+.slide.divider {
+    background: var(--navy);
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    border-top: 3px solid var(--gold);
+    border-bottom: 3px solid var(--gold);
+}
+
+.divider h1 {
+    color: var(--gold);
+    font-size: clamp(1.4rem, 4vw, 3rem);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.divider .divider-sub {
+    color: var(--text-secondary);
+    font-size: clamp(0.8rem, 1.5vw, 1.1rem);
+    margin-top: 0.5em;
+}
+
+.divider .divider-deco {
+    font-size: clamp(4rem, 15vw, 12rem);
+    font-weight: 800;
+    color: rgba(232,164,45,0.08);
+    position: absolute;
+    right: 10%;
+    top: 50%;
+    transform: translateY(-50%);
+    line-height: 1;
+}
+
+/* =========================================
+   PERFORMANCE HEADER SLIDES
+   ========================================= */
+.slide.perf-header {
+    background: var(--navy-mid);
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.perf-header h1 { color: var(--white); }
+.perf-header .sub { margin-top: 0.5em; }
+
+/* =========================================
+   IMAGE SLIDES
+   ========================================= */
+.img-row {
+    display: flex;
+    gap: clamp(0.5rem, 1vw, 1rem);
+    justify-content: center;
+    align-items: center;
+    flex: 1;
+    min-height: 0;
+}
+
+.img-row img {
+    max-height: min(45vh, 380px);
+    max-width: 48%;
+    object-fit: contain;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.03);
+}
+
+.img-row.single img {
+    max-width: 90%;
+    max-height: min(50vh, 420px);
+}
+
+/* =========================================
+   PLACEHOLDER CHART
+   ========================================= */
+.chart-placeholder {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-height: 0;
+    color: var(--text-secondary);
+    font-size: var(--small-size);
+    opacity: 0.5;
+    padding: 1rem;
+    text-align: center;
+}
+
+/* =========================================
+   FLOW DIAGRAM
+   ========================================= */
+.flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(0.3rem, 1vw, 0.8rem);
+    flex-wrap: wrap;
+}
+
+.flow-box {
+    background: var(--navy-mid);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: clamp(0.4rem, 1vw, 0.8rem) clamp(0.6rem, 1.5vw, 1.2rem);
+    text-align: center;
+    font-size: var(--small-size);
+    color: var(--white);
+    font-weight: 600;
+}
+
+.flow-arrow {
+    color: var(--blue);
+    font-size: clamp(1rem, 2vw, 1.5rem);
+    font-weight: 700;
+}
+
+/* =========================================
+   EQUATION DISPLAY
+   ========================================= */
+.equation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(0.5rem, 2vw, 1.5rem);
+    flex-wrap: wrap;
+}
+
+.eq-box {
+    background: var(--navy-mid);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: clamp(0.6rem, 1.5vw, 1.2rem);
+    text-align: center;
+    min-width: clamp(80px, 15vw, 160px);
+}
+
+.eq-box .eq-label {
+    font-size: var(--small-size);
+    color: var(--text-secondary);
+}
+
+.eq-box .eq-value {
+    font-size: clamp(1rem, 2vw, 1.5rem);
+    font-weight: 800;
+    color: var(--white);
+}
+
+.eq-op {
+    font-size: clamp(1.2rem, 2.5vw, 2rem);
+    font-weight: 800;
+    color: var(--blue);
+}
+
+/* =========================================
+   ORG CHART
+   ========================================= */
+.org-top {
+    display: flex;
+    justify-content: center;
+    gap: clamp(1rem, 4vw, 3rem);
+    margin-bottom: clamp(0.5rem, 1.5vw, 1rem);
+}
+
+.org-person {
+    text-align: center;
+    padding: clamp(0.3rem, 0.8vw, 0.5rem);
+}
+
+.org-person .name {
+    font-size: var(--small-size);
+    font-weight: 700;
+    color: var(--white);
+}
+
+.org-person .role {
+    font-size: clamp(0.55rem, 0.8vw, 0.7rem);
+    color: var(--text-secondary);
+}
+
+.org-heads {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 100px), 1fr));
+    gap: clamp(0.3rem, 0.8vw, 0.6rem);
+    padding-top: clamp(0.3rem, 1vw, 0.8rem);
+    border-top: 1px solid var(--border);
+}
+
+.org-head-card {
+    background: var(--navy-mid);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: clamp(0.3rem, 0.6vw, 0.5rem);
+    text-align: center;
+}
+
+.org-head-card .dept {
+    font-size: clamp(0.5rem, 0.7vw, 0.65rem);
+    color: var(--blue);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.org-head-card .name {
+    font-size: clamp(0.55rem, 0.8vw, 0.7rem);
+    color: var(--white);
+    font-weight: 600;
+}
+
+/* =========================================
+   COVER SLIDE
+   ========================================= */
+.slide.cover {
+    background:
+        radial-gradient(ellipse at 75% 20%, rgba(0,168,232,0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 20% 80%, rgba(0,168,232,0.08) 0%, transparent 50%),
+        linear-gradient(180deg, var(--navy) 0%, #0d1f38 100%);
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.cover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
+}
+
+.cover .wordmark {
+    position: absolute;
+    bottom: clamp(1rem, 3vw, 2rem);
+    right: clamp(1rem, 3vw, 2rem);
+    font-size: var(--body-size);
+    font-weight: 800;
+    color: var(--blue);
+    letter-spacing: 0.15em;
+    text-transform: lowercase;
+}
+
+/* =========================================
+   PILL BADGE
+   ========================================= */
+.pill {
+    display: inline-block;
+    background: rgba(0,168,232,0.15);
+    color: var(--blue);
+    font-size: var(--small-size);
+    font-weight: 700;
+    padding: 0.2em 0.8em;
+    border-radius: 20px;
+    border: 1px solid rgba(0,168,232,0.3);
+}
+
+/* =========================================
+   COMPARISON COLS
+   ========================================= */
+.compare {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: clamp(0.5rem, 1.5vw, 1rem);
+    align-items: start;
+}
+
+.compare-plus {
+    font-size: clamp(1.5rem, 4vw, 3rem);
+    font-weight: 800;
+    color: var(--blue);
+    align-self: center;
+    text-align: center;
+}
+
+.callout {
+    background: rgba(0,168,232,0.08);
+    border-left: 3px solid var(--blue);
+    padding: clamp(0.4rem, 1vw, 0.8rem) clamp(0.6rem, 1.5vw, 1rem);
+    border-radius: 0 6px 6px 0;
+    font-size: var(--body-size);
+    color: var(--white);
+    font-weight: 600;
+}
+
+/* =========================================
+   RESPONSIVE HEIGHT BREAKPOINTS
+   ========================================= */
+@media (max-height: 700px) {
+    :root {
+        --slide-padding: clamp(0.8rem, 3vw, 2rem);
+        --content-gap: clamp(0.4rem, 1vw, 1rem);
+        --title-size: clamp(1.3rem, 3.5vw, 2.5rem);
+    }
+}
+
+@media (max-height: 600px) {
+    :root {
+        --slide-padding: clamp(0.5rem, 2.5vw, 1.5rem);
+        --title-size: clamp(1.1rem, 3vw, 2rem);
+        --body-size: clamp(0.65rem, 1vw, 0.9rem);
+    }
+    .nav-dots, .keyboard-hint { display: none; }
+}
+
+@media (max-height: 500px) {
+    :root {
+        --slide-padding: clamp(0.4rem, 2vw, 1rem);
+        --title-size: clamp(1rem, 2.5vw, 1.5rem);
+    }
+}
+
+@media (max-width: 600px) {
+    .compare { grid-template-columns: 1fr; }
+    .compare-plus { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+    html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+
+<!-- Progress Bar -->
+<div class="progress-bar" id="progressBar"></div>
+
+<!-- Nav Dots -->
+<nav class="nav-dots" id="navDots"></nav>
+
+<!-- Slide Counter -->
+<div class="slide-counter" id="slideCounter">1 / 46</div>
+
+<!-- Keyboard Hint -->
+<div class="keyboard-hint" id="keyHint">&#8593;&#8595; to navigate</div>
+
+<!-- ============================================
+     SLIDE 1: COVER
+     ============================================ -->
+<section class="slide cover visible">
+    <div class="slide-content" style="position:relative;z-index:1;">
+        <p class="reveal sub" style="margin-bottom:0.5em;">January 2026</p>
+        <h1 class="reveal">PRESCIENT<br>INVESTMENT MANAGEMENT</h1>
+        <p class="reveal" style="font-size:var(--h3-size);color:var(--blue);font-weight:700;margin-top:0.3em;">Portable Alpha Equity Strategy</p>
+    </div>
+    <span class="wordmark">prescient</span>
+</section>
+
+<!-- ============================================
+     SLIDE 2: AUM
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">01</span>
+    <div class="slide-content">
+        <h2 class="reveal">Assets Under Management</h2>
+        <div class="grid-3 reveal">
+            <div class="stat-card"><div class="stat-value">R23.4bn</div><div class="stat-label">Total AUM</div></div>
+            <div class="stat-card"><div class="stat-value">2</div><div class="stat-label">Client Types<br>(Institutional &amp; Retail)</div></div>
+            <div class="stat-card"><div class="stat-value">4</div><div class="stat-label">Asset Classes</div></div>
+        </div>
+        <p class="reveal">Diversified across Fixed Interest, Equity, Multi-Asset and Global capabilities. Approximately even split between Institutional and Retail investors.</p>
+        <p class="source reveal">Source: Prescient Investment Management (31 January 2026)</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 3: INVESTMENT TEAM
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">02</span>
+    <div class="slide-content">
+        <h2 class="reveal">Investment Team</h2>
+        <div class="org-top reveal">
+            <div class="org-person"><div class="name">Cheree Dyers</div><div class="role">Chief Executive Officer</div></div>
+            <div class="org-person"><div class="name">Bastian Teichgreeber</div><div class="role">Chief Investment Officer</div></div>
+        </div>
+        <div class="org-heads reveal">
+            <div class="org-head-card"><div class="dept">Cash &amp; Income</div><div class="name">Henk Kotze</div></div>
+            <div class="org-head-card"><div class="dept">Bonds</div><div class="name">Reza Ismail</div></div>
+            <div class="org-head-card"><div class="dept">Credit</div><div class="name">Conway Williams</div></div>
+            <div class="org-head-card"><div class="dept">Multi-Asset</div><div class="name">Rupert Hare</div></div>
+            <div class="org-head-card" style="border-color:var(--blue);"><div class="dept">Equities</div><div class="name">Seeiso Matlanyane</div></div>
+            <div class="org-head-card"><div class="dept">Data Science</div><div class="name">Tim Terblanche</div></div>
+            <div class="org-head-card"><div class="dept">Research</div><div class="name">Odwa Sihlobo</div></div>
+        </div>
+        <div class="reveal" style="display:flex;gap:0.5rem;flex-wrap:wrap;padding-top:0.5rem;border-top:1px solid var(--border);margin-top:0.3rem;">
+            <div class="org-head-card" style="flex:1;min-width:120px;"><div class="dept">Risk &amp; Analytics</div><div class="name">Ruan Yacumakis</div></div>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 4: EQUITY TEAM
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">03</span>
+    <div class="slide-content">
+        <h2 class="reveal">Equity Team</h2>
+        <div class="reveal" style="text-align:center;margin-bottom:0.3em;">
+            <span class="pill">Head of Equities: Seeiso Matlanyane</span>
+        </div>
+        <div class="grid-2 reveal">
+            <div class="card">
+                <h3 style="font-size:var(--small-size);color:var(--blue);text-transform:uppercase;">Portfolio Managers</h3>
+                <p>Romelon Chetty &bull; Shriya Roy &bull; Nabeel Kolia &bull; Martin Hammond &bull; Sajjaad Ahmed &bull; Luzuko Nomjana &bull; Jabulani Ngobese</p>
+            </div>
+            <div class="card">
+                <h3 style="font-size:var(--small-size);color:var(--blue);text-transform:uppercase;">Quantitative Analysts</h3>
+                <p>Noxolo Sicuku &bull; Michael Temple &bull; Kelli Frew &bull; Snothando Ntshembeni &bull; Lauren Naidoo &bull; Vishal Rama &bull; Noeriniche Appels &bull; Kelly Vlug &bull; Dimpho Sekhaolelo &bull; Nicholas de Clercq</p>
+            </div>
+        </div>
+        <p class="reveal" style="font-size:var(--small-size);"><strong>Dealer:</strong> Ashleigh Allan &nbsp;|&nbsp; * FAIS Representative under supervision</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 5: CORE EQUITY FUND STRATEGIES
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">04</span>
+    <div class="slide-content">
+        <h2 class="reveal">Core Equity Fund Strategies</h2>
+        <div class="grid-2 reveal">
+            <div class="card" style="border-top:3px solid var(--blue);">
+                <h3>Core Equity <span class="pill" style="font-size:clamp(0.5rem,0.7vw,0.65rem);">Enhanced Indexation</span></h3>
+                <p>Closely tracks benchmark while systematically generating consistent outperformance to offset costs and deliver above-benchmark returns after fees. Employs quantitative indexation with low-risk return enhancement strategies.</p>
+            </div>
+            <div class="card" style="border-top:3px solid var(--gold);">
+                <h3>General Equity <span class="pill" style="font-size:clamp(0.5rem,0.7vw,0.65rem);background:rgba(232,164,45,0.15);color:var(--gold);border-color:rgba(232,164,45,0.3);">Peer Cognisant</span></h3>
+                <p>Targets consistent above-average returns vs the general equity market. Ideal building block for peer-cognisant balanced funds. Systematically determines average category exposures then applies enhanced indexation.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 6: CORE GLOBAL EQUITY
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">05</span>
+    <div class="slide-content">
+        <h2 class="reveal">Core Global Equity Fund</h2>
+        <span class="pill reveal">Global Strategy</span>
+        <div class="card reveal">
+            <p style="color:var(--white);">Follows an Enhanced Indexation process designed to closely track benchmark performance while generating modest, consistent outperformance to offset implementation costs. Employs quantitative indexation techniques to replicate benchmark constituents while applying low-risk return enhancement strategies to generate reliable alpha.</p>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 7: CURRENT EQUITY AUM
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">06</span>
+    <div class="slide-content" style="align-items:center;text-align:center;">
+        <h2 class="reveal">Current Equity AUM</h2>
+        <div class="reveal" style="font-size:clamp(2rem,6vw,4.5rem);font-weight:800;color:var(--blue);">ZAR 23.4bn</div>
+        <p class="reveal">as of 31 January 2026</p>
+        <div class="grid-3 reveal" style="width:100%;max-width:700px;">
+            <div class="stat-card"><div class="stat-label">Core Capped SWIX</div></div>
+            <div class="stat-card"><div class="stat-label">Core Equity SWIX</div></div>
+            <div class="stat-card"><div class="stat-label">Core Global Equity</div></div>
+        </div>
+        <p class="source reveal">Source: Prescient as of 31 January 2026</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 8: AUM GROWTH
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">07</span>
+    <div class="slide-content">
+        <h2 class="reveal">AUM Growth &mdash; Equity Propositions</h2>
+        <p class="reveal">Strong AUM trajectory driven by both institutional and retail mandates.</p>
+        <div class="chart-placeholder reveal">AUM Growth Chart &mdash; data available in fund factsheet</div>
+        <p class="source reveal">Source: Prescient as of 31 January 2026</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 9: SECTION DIVIDER — INVESTMENT PHILOSOPHY
+     ============================================ -->
+<section class="slide divider">
+    <div class="divider-deco">I</div>
+    <div class="slide-content" style="align-items:center;">
+        <h1>Investment Philosophy<br>&amp; Process</h1>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 10: INVESTMENT PHILOSOPHY
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">08</span>
+    <div class="slide-content">
+        <h2 class="reveal">Investment Philosophy</h2>
+        <div class="grid-4 reveal">
+            <div class="card" style="border-left:3px solid var(--blue);">
+                <h3>Quantitative Discipline</h3>
+                <p>Rules-based, systematic process. No emotional bias in decision-making.</p>
+            </div>
+            <div class="card" style="border-left:3px solid var(--gold);">
+                <h3>Enhanced Indexation</h3>
+                <p>Benchmark-aware with consistent, reliable alpha generation.</p>
+            </div>
+            <div class="card" style="border-left:3px solid #4ecdc4;">
+                <h3>Risk Management</h3>
+                <p>Tight tracking error, downside protection, regulation-compliant.</p>
+            </div>
+            <div class="card" style="border-left:3px solid #c86fc9;">
+                <h3>Portable Alpha</h3>
+                <p>Decouple market beta from cash alpha generation for superior returns.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 11: BEST OF BOTH WORLDS
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">09</span>
+    <div class="slide-content">
+        <h2 class="reveal">Prescient Core Equity Strategy</h2>
+        <p class="sub reveal">The best of both worlds</p>
+        <div class="compare reveal">
+            <div class="card">
+                <h3 style="color:var(--text-secondary);">Passive Indexation</h3>
+                <p>Market returns &bull; Low cost &bull; Benchmark tracking &bull; Transparent</p>
+            </div>
+            <div class="compare-plus">+</div>
+            <div class="card" style="border-color:var(--blue);">
+                <h3 style="color:var(--blue);">Active Alpha</h3>
+                <p>Consistent outperformance &bull; Quantitative edge &bull; Cash enhancement</p>
+            </div>
+        </div>
+        <div class="callout reveal">Result: Market Beta + Enhanced Cash Alpha</div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 12: PORTABLE ALPHA — OPTION 1
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">10</span>
+    <div class="slide-content">
+        <h2 class="reveal">Portable Alpha</h2>
+        <p class="sub reveal">Option 1: Outright Purchase</p>
+        <div class="equation reveal">
+            <div class="eq-box"><div class="eq-label">Input</div><div class="eq-value">Physical Holdings</div></div>
+            <div class="eq-op">=</div>
+            <div class="eq-box"><div class="eq-label">Output</div><div class="eq-value">Market Returns</div></div>
+        </div>
+        <p class="reveal" style="text-align:center;">Same as pure passive physical replication. Capital fully deployed in equities.</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 13: PORTABLE ALPHA — OPTION 2
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">11</span>
+    <div class="slide-content">
+        <h2 class="reveal">Portable Alpha</h2>
+        <p class="sub reveal">Option 2: Unfunded Purchase</p>
+        <div class="equation reveal">
+            <div class="eq-box"><div class="eq-label">Unfunded</div><div class="eq-value">Market Exposure</div></div>
+            <div class="eq-op">=</div>
+            <div class="eq-box"><div class="eq-label">Same Result</div><div class="eq-value">Market Returns</div></div>
+        </div>
+        <p class="reveal" style="text-align:center;">Gives same exposure when cost of funding exactly offsets cash yield.</p>
+        <div class="callout reveal" style="text-align:center;">&#10148; Opens the opportunity for alpha generation...</div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 14: PORTABLE ALPHA — THE OPPORTUNITY
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">12</span>
+    <div class="slide-content">
+        <h2 class="reveal">Portable Alpha</h2>
+        <p class="sub reveal">Generating excess return</p>
+        <div class="equation reveal">
+            <div class="eq-box" style="border-color:var(--gold);"><div class="eq-label">Active Cash</div><div class="eq-value">Cash + &alpha;</div></div>
+            <div class="eq-op">+</div>
+            <div class="eq-box"><div class="eq-label">Unfunded</div><div class="eq-value">Market Exposure</div></div>
+            <div class="eq-op">=</div>
+            <div class="eq-box" style="border-color:var(--blue);"><div class="eq-label">Total</div><div class="eq-value">Returns + &alpha;</div></div>
+        </div>
+        <p class="reveal" style="text-align:center;opacity:0.5;font-size:var(--small-size);">vs. Option 1: Physical Holdings = Market Returns (no alpha)</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 15: ENHANCED INDEXATION
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">13</span>
+    <div class="slide-content">
+        <h2 class="reveal">Portable Alpha &mdash; Enhanced Indexation</h2>
+        <div class="grid-2 reveal">
+            <div class="card" style="border-left:3px solid var(--blue);">
+                <h3>Term Assets</h3>
+                <p>Higher fixed return from capital committed for longer periods (duration risk).</p>
+            </div>
+            <div class="card" style="border-left:3px solid var(--gold);">
+                <h3>Credit Assets</h3>
+                <p>Higher return from issuers with credit risk (credit spread).</p>
+            </div>
+        </div>
+        <div class="callout reveal">Excess Cash &amp; Money Market return = Term (duration) and/or Credit</div>
+        <p class="source reveal">Managed within regulation and investment risk tolerances</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 16: ENHANCED INDEXATION DIAGRAM
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">14</span>
+    <div class="slide-content">
+        <h2 class="reveal">Enhanced Indexation Process</h2>
+        <div class="flow reveal">
+            <div class="flow-box">Cash Portfolio</div>
+            <div class="flow-arrow">&#10148;</div>
+            <div class="flow-box">Term + Credit<br>Optimisation</div>
+            <div class="flow-arrow">&#10148;</div>
+            <div class="flow-box" style="border-color:var(--gold);">Cash + &alpha;</div>
+            <div class="flow-arrow">&#10148;</div>
+            <div class="flow-box">Combined with<br>Equity Exposure</div>
+            <div class="flow-arrow">&#10148;</div>
+            <div class="flow-box" style="border-color:var(--blue);color:var(--blue);">Market Returns + &alpha;</div>
+        </div>
+        <p class="reveal" style="text-align:center;">Quantitative optimisation determines optimal term and credit allocation.</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 17: INVESTOR GETS — BETA
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">15</span>
+    <div class="slide-content">
+        <h2 class="reveal">What Does the Investor Get?</h2>
+        <p class="sub reveal">1. Passive Equity Market Beta</p>
+        <div class="img-row reveal">
+            <img src="prescient-assets/slide17_Picture_11.png" alt="Equity Market Beta Chart 1">
+            <img src="prescient-assets/slide17_Picture_14.png" alt="Equity Market Beta Chart 2">
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 18: INVESTOR GETS — ALPHA
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">16</span>
+    <div class="slide-content">
+        <h2 class="reveal">What Does the Investor Get?</h2>
+        <p class="sub reveal">2. Active Cash and Money Market Alpha</p>
+        <div class="img-row reveal">
+            <img src="prescient-assets/slide18_Picture_6.png" alt="Cash Alpha Chart 1">
+            <img src="prescient-assets/slide18_Picture_8.png" alt="Cash Alpha Chart 2">
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 19: PORTFOLIO CONSTRUCTION
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">17</span>
+    <div class="slide-content">
+        <h2 class="reveal">How Do We Build the Portfolio?</h2>
+        <p class="sub reveal">Portfolio Construction</p>
+        <div class="grid-3 reveal">
+            <div class="card" style="border-top:3px solid var(--blue);text-align:center;">
+                <div style="font-size:clamp(1.5rem,3vw,2.5rem);font-weight:800;color:var(--blue);">1</div>
+                <h3>Determine Equity Beta Target</h3>
+                <p>Define the index exposure required</p>
+            </div>
+            <div class="card" style="border-top:3px solid var(--gold);text-align:center;">
+                <div style="font-size:clamp(1.5rem,3vw,2.5rem);font-weight:800;color:var(--gold);">2</div>
+                <h3>Source Market Exposure</h3>
+                <p>ELNs, futures, TRS, physical equity (minimised)</p>
+            </div>
+            <div class="card" style="border-top:3px solid #4ecdc4;text-align:center;">
+                <div style="font-size:clamp(1.5rem,3vw,2.5rem);font-weight:800;color:#4ecdc4;">3</div>
+                <h3>Invest Residual Cash</h3>
+                <p>Term deposits, NCDs, credit bonds</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 20: EFFICIENT CAPITAL ALLOCATION
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">18</span>
+    <div class="slide-content">
+        <h2 class="reveal">Why Is This Better?</h2>
+        <p class="sub reveal">Efficient Capital Allocation</p>
+        <div class="grid-2 reveal">
+            <div class="card" style="opacity:0.6;">
+                <h3 style="color:var(--text-secondary);">Pure Passive</h3>
+                <p>Capital locked in equities &bull; No alpha opportunity &bull; Cost drag erodes returns</p>
+            </div>
+            <div class="card" style="border-color:var(--blue);">
+                <h3 style="color:var(--blue);">Portable Alpha</h3>
+                <p style="color:var(--white);">Equity beta via derivatives + active cash management = market returns + alpha</p>
+            </div>
+        </div>
+        <div class="callout reveal">Same market exposure. Better use of capital.</div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 21: SECTION DIVIDER — EQUITY MARKET PROCESS
+     ============================================ -->
+<section class="slide divider">
+    <div class="divider-deco">II</div>
+    <div class="slide-content" style="align-items:center;">
+        <h1>Equity Market Process &amp; Portfolio Construction</h1>
+        <p class="divider-sub">Capped ALSI</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 22: EQUITY MARKET EXPOSURE (1)
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">19</span>
+    <div class="slide-content">
+        <h2 class="reveal">How Do We Replicate the Benchmark?</h2>
+        <p class="sub reveal">Equity Market Exposure</p>
+        <p class="reveal">Most of the effective equity exposure through Equity Linked Notes (ELNs)</p>
+        <div class="img-row reveal">
+            <img src="prescient-assets/slide22_Picture_12.png" alt="ELN Exposure Chart 1">
+            <img src="prescient-assets/slide22_Picture_3.png" alt="ELN Exposure Chart 2">
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 23: EQUITY MARKET EXPOSURE (2)
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">20</span>
+    <div class="slide-content">
+        <h2 class="reveal">How Do We Replicate the Benchmark?</h2>
+        <p class="sub reveal">Equity Market Exposure</p>
+        <p class="reveal">Any physical stock held is optimised for sector and share neutrality</p>
+        <div class="img-row single reveal">
+            <img src="prescient-assets/slide23_Picture_3.png" alt="Physical Stock Optimisation">
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 24: EQUITY MARKET EXPOSURE (3)
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">21</span>
+    <div class="slide-content">
+        <h2 class="reveal">How Do We Replicate the Benchmark?</h2>
+        <p class="sub reveal">Equity Market Exposure</p>
+        <p class="reveal">Resulting in the effective equity exposure of the target benchmark index</p>
+        <div class="img-row single reveal">
+            <img src="prescient-assets/slide24_Picture_5.png" alt="Effective Equity Exposure">
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 25: SECTION DIVIDER — PEER COGNISANT
+     ============================================ -->
+<section class="slide divider">
+    <div class="divider-deco">III</div>
+    <div class="slide-content" style="align-items:center;">
+        <h1>Equity Market Beta &mdash; Peer Cognisant Model</h1>
+        <p class="divider-sub">General Equity Category</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 26: PEER COGNISANT (1)
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">22</span>
+    <div class="slide-content">
+        <h2 class="reveal">How Do We Determine the Optimal Equity Allocation?</h2>
+        <p class="sub reveal">Peer Cognisant Model</p>
+        <div class="img-row single reveal">
+            <img src="prescient-assets/slide26_Picture_10.png" alt="Peer Cognisant Model">
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 27: PEER COGNISANT (2)
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">23</span>
+    <div class="slide-content">
+        <h2 class="reveal">How Do We Determine the Optimal Equity Allocation?</h2>
+        <p class="sub reveal">Peer Cognisant Model</p>
+        <p class="reveal">We measure and select only those portfolios within the lowest 1% tracking error</p>
+        <div class="img-row single reveal">
+            <img src="prescient-assets/slide27_Picture_6.png" alt="Tracking Error Selection">
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 28: PEER COGNISANT (3)
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">24</span>
+    <div class="slide-content">
+        <h2 class="reveal">How Do We Determine the Optimal Equity Allocation?</h2>
+        <p class="sub reveal">Peer Cognisant Model</p>
+        <p class="reveal">We calculate the average allocation and share look-through exposure</p>
+        <div class="img-row reveal">
+            <img src="prescient-assets/slide28_Picture_5.png" alt="Average Allocation">
+            <img src="prescient-assets/slide28_Picture_8.png" alt="Look-through Exposure">
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 29: PEER COGNISANT (4)
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">25</span>
+    <div class="slide-content">
+        <h2 class="reveal">How Do We Determine the Optimal Equity Allocation?</h2>
+        <p class="sub reveal">Peer Cognisant Model</p>
+        <p class="reveal">The resulting allocation is then the dynamic equity beta target</p>
+        <div class="img-row single reveal">
+            <img src="prescient-assets/slide29_Picture_6.png" alt="Dynamic Equity Beta Target">
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 30: PEER COGNISANT — DOES IT WORK?
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">26</span>
+    <div class="slide-content">
+        <h2 class="reveal">How Do We Know This Equity Allocation Works?</h2>
+        <p class="sub reveal">Peer Cognisant Model</p>
+        <div class="img-row single reveal">
+            <img src="prescient-assets/slide30_Picture_5.png" alt="Model Validation">
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 31: PORTFOLIO CONSTRUCTION (PEER)
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">27</span>
+    <div class="slide-content">
+        <h2 class="reveal">How Do We Implement This Model?</h2>
+        <p class="sub reveal">Portfolio Construction</p>
+        <p class="reveal">Solve for the lowest physical equity portfolio to enable maximum portable alpha</p>
+        <div class="img-row reveal">
+            <img src="prescient-assets/slide31_Picture_6.png" alt="Portfolio Construction 1">
+            <img src="prescient-assets/slide31_Picture_8.png" alt="Portfolio Construction 2">
+        </div>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 32: SECTION DIVIDER — CASH & MONEY MARKET
+     ============================================ -->
+<section class="slide divider">
+    <div class="divider-deco">IV</div>
+    <div class="slide-content" style="align-items:center;">
+        <h1>Cash and Money Market Process</h1>
+        <p class="divider-sub">Optimisation and Risk Management</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 33: ENHANCED INDEXATION (CASH)
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">28</span>
+    <div class="slide-content">
+        <h2 class="reveal">How We Actively Manage Cash &amp; Money Market Assets</h2>
+        <p class="sub reveal">Enhanced Indexation Process</p>
+        <div class="grid-2 reveal">
+            <div class="card" style="border-left:3px solid var(--blue);">
+                <h3>Term Assets</h3>
+                <p>Higher fixed return due to capital being committed for longer periods (duration risk).</p>
+            </div>
+            <div class="card" style="border-left:3px solid var(--gold);">
+                <h3>Credit Assets</h3>
+                <p>Higher return from issuers with a given probability of default (credit risk).</p>
+            </div>
+        </div>
+        <div class="callout reveal">Excess Cash &amp; Money Market return obtained from Term (duration) and/or Credit</div>
+        <p class="source reveal">Managed within regulation and investment risk tolerances</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 34: SECTION DIVIDER — PERFORMANCE
+     ============================================ -->
+<section class="slide divider">
+    <div class="divider-deco">V</div>
+    <div class="slide-content" style="align-items:center;">
+        <h1>Performance Track Record</h1>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 35: PERF HEADER — CAPPED
+     ============================================ -->
+<section class="slide perf-header">
+    <div class="slide-content" style="align-items:center;">
+        <h1 class="reveal">Prescient Core Capped Equity Fund</h1>
+        <p class="sub reveal">Institutional Performance &mdash; Prescient Core Capped SWIX Equity Composite</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 36: CAPPED SWIX PERFORMANCE
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">29</span>
+    <div class="slide-content">
+        <h2 class="reveal">Prescient Core Capped SWIX Equity Composite</h2>
+        <p class="sub reveal">Performance</p>
+        <div class="chart-placeholder reveal">Performance data table &mdash; see fund factsheet for full data</div>
+        <p class="source reveal">Gross returns to 31 January 2026. Since inception January 2018.</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 37: CAPPED SWIX CUMULATIVE RETURNS
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">30</span>
+    <div class="slide-content">
+        <h2 class="reveal">Prescient Core Capped SWIX Equity Composite</h2>
+        <p class="sub reveal">Cumulative Returns</p>
+        <div class="chart-placeholder reveal">Cumulative returns chart &mdash; see fund factsheet</div>
+        <p class="source reveal">Gross returns to 31 January 2026. Since inception January 2018.</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 38: CAPPED A2 INDEXED RETURN
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">31</span>
+    <div class="slide-content">
+        <h2 class="reveal">Prescient Core Capped Equity Fund A2</h2>
+        <p class="sub reveal">Indexed Return</p>
+        <div class="chart-placeholder reveal">Indexed return chart &mdash; see fund factsheet</div>
+        <p class="source reveal">Source: Prescient Prime Portal, 31 January 2026</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 39: CAPPED ROLLING VOL
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">32</span>
+    <div class="slide-content">
+        <h2 class="reveal">Prescient Core Capped Equity Fund A2</h2>
+        <p class="sub reveal">Rolling 1-Year Volatility Percentile Rank</p>
+        <div class="chart-placeholder reveal">Rolling volatility chart &mdash; see fund factsheet</div>
+        <p class="source reveal">Source: Prescient Prime Portal, 31 January 2026</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 40: CAPPED QUARTILE
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">33</span>
+    <div class="slide-content">
+        <h2 class="reveal">Prescient Core Capped Equity Fund A2</h2>
+        <p class="sub reveal">Quartile Analysis</p>
+        <div class="chart-placeholder reveal">Quartile analysis chart &mdash; see fund factsheet</div>
+        <p class="source reveal">Source: Prescient Prime Portal, 31 January 2026</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 41: PERF HEADER — CORE EQUITY
+     ============================================ -->
+<section class="slide perf-header">
+    <div class="slide-content" style="align-items:center;">
+        <h1 class="reveal">Prescient Core Equity Fund</h1>
+        <p class="sub reveal">Institutional Performance &mdash; Prescient Core Equity SWIX Composite</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 42: CORE EQUITY PERFORMANCE
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">34</span>
+    <div class="slide-content">
+        <h2 class="reveal">Prescient Core Equity SWIX Composite</h2>
+        <p class="sub reveal">Performance</p>
+        <div class="chart-placeholder reveal">Performance data table &mdash; see fund factsheet</div>
+        <p class="source reveal">Gross returns to 31 January 2026. Since inception September 2014.</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 43: CORE EQUITY CUMULATIVE
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">35</span>
+    <div class="slide-content">
+        <h2 class="reveal">Prescient Core Equity SWIX Composite</h2>
+        <p class="sub reveal">Cumulative Returns</p>
+        <div class="chart-placeholder reveal">
+            <div>
+                <div style="font-size:clamp(1rem,2vw,1.5rem);font-weight:700;color:var(--gold);margin-bottom:0.3em;">&ldquo;Consistency over magnitude&rdquo;</div>
+                <div>Cumulative returns chart &mdash; see fund factsheet</div>
+            </div>
+        </div>
+        <p class="source reveal">Gross returns to 31 January 2026. Since inception September 2014.</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 44: CORE EQUITY INDEXED
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">36</span>
+    <div class="slide-content">
+        <h2 class="reveal">Prescient Core Equity Fund A2 vs SA Equity</h2>
+        <p class="sub reveal">Indexed Returns</p>
+        <div class="chart-placeholder reveal">Indexed returns chart &mdash; see fund factsheet</div>
+        <p class="source reveal">Source: Prescient Prime Portal, 31 January 2026</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 45: CORE ROLLING VOL
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">37</span>
+    <div class="slide-content">
+        <h2 class="reveal">Prescient Core Equity Fund A2 vs SA Equity</h2>
+        <p class="sub reveal">Rolling 1-Year Volatility Percentile Rank</p>
+        <div class="chart-placeholder reveal">Rolling volatility chart &mdash; see fund factsheet</div>
+        <p class="source reveal">Source: Prescient Prime Portal, 31 January 2026</p>
+    </div>
+</section>
+
+<!-- ============================================
+     SLIDE 46: CORE QUARTILE
+     ============================================ -->
+<section class="slide">
+    <span class="slide-num">38</span>
+    <div class="slide-content">
+        <h2 class="reveal">Prescient Core Equity Fund A2</h2>
+        <p class="sub reveal">Quartile Analysis</p>
+        <div class="chart-placeholder reveal">Quartile analysis chart &mdash; see fund factsheet</div>
+        <p class="source reveal">Source: Prescient Prime Portal, 31 January 2026</p>
+    </div>
+</section>
+
+<!-- =========================================
+     JAVASCRIPT — PRESENTATION CONTROLLER
+     ========================================= -->
+<script>
+(function() {
+    const slides = document.querySelectorAll('.slide');
+    const totalSlides = slides.length;
+    const progressBar = document.getElementById('progressBar');
+    const navDotsContainer = document.getElementById('navDots');
+    const slideCounter = document.getElementById('slideCounter');
+    const keyHint = document.getElementById('keyHint');
+    let currentSlide = 0;
+    let isScrolling = false;
+
+    // Build nav dots
+    slides.forEach(function(_, i) {
+        var dot = document.createElement('button');
+        dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+        dot.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+        dot.addEventListener('click', function() { goTo(i); });
+        navDotsContainer.appendChild(dot);
+    });
+
+    var dots = navDotsContainer.querySelectorAll('.nav-dot');
+
+    function updateUI(index) {
+        currentSlide = index;
+        progressBar.style.width = ((index + 1) / totalSlides * 100) + '%';
+        slideCounter.textContent = (index + 1) + ' / ' + totalSlides;
+        dots.forEach(function(d, i) {
+            d.classList.toggle('active', i === index);
+        });
+    }
+
+    function goTo(index) {
+        if (index < 0 || index >= totalSlides) return;
+        slides[index].scrollIntoView({ behavior: 'smooth' });
+        updateUI(index);
+    }
+
+    function next() { goTo(currentSlide + 1); }
+    function prev() { goTo(currentSlide - 1); }
+
+    // Keyboard
+    document.addEventListener('keydown', function(e) {
+        switch(e.key) {
+            case 'ArrowDown': case 'ArrowRight': case ' ': case 'PageDown':
+                e.preventDefault(); next(); break;
+            case 'ArrowUp': case 'ArrowLeft': case 'PageUp':
+                e.preventDefault(); prev(); break;
+            case 'Home': e.preventDefault(); goTo(0); break;
+            case 'End': e.preventDefault(); goTo(totalSlides - 1); break;
+        }
+    });
+
+    // Wheel (debounced)
+    var wheelTimeout;
+    document.addEventListener('wheel', function(e) {
+        if (wheelTimeout) return;
+        wheelTimeout = setTimeout(function() { wheelTimeout = null; }, 800);
+        if (e.deltaY > 30) next();
+        else if (e.deltaY < -30) prev();
+    }, { passive: true });
+
+    // Touch/swipe
+    var touchStartY = 0;
+    document.addEventListener('touchstart', function(e) {
+        touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    document.addEventListener('touchend', function(e) {
+        var diff = touchStartY - e.changedTouches[0].clientY;
+        if (Math.abs(diff) > 50) {
+            if (diff > 0) next(); else prev();
+        }
+    }, { passive: true });
+
+    // Intersection Observer for .visible class
+    var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                var idx = Array.prototype.indexOf.call(slides, entry.target);
+                if (idx >= 0) updateUI(idx);
+            }
+        });
+    }, { threshold: 0.5 });
+
+    slides.forEach(function(slide) { observer.observe(slide); });
+
+    // Fade keyboard hint
+    setTimeout(function() {
+        if (keyHint) keyHint.classList.add('hidden');
+    }, 3000);
+
+    // Init first slide
+    slides[0].classList.add('visible');
+    updateUI(0);
+})();
+</script>
+
+</body>
+</html>
