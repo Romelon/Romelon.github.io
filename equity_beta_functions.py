@@ -1,8 +1,9 @@
 """Equity beta positioning and exposure functions for Prescient equity funds.
 
-This module provides four public functions for analysing equity beta exposures
-across Prescient equity funds, along with private helper functions that
-encapsulate shared data-retrieval and computation logic.
+This module provides four public equity analysis functions and a suite of
+reusable helper functions that encapsulate shared data-retrieval and
+computation logic. All functions are public and may be imported and called
+independently.
 
 Dependencies:
     pandas, numpy, sqlalchemy
@@ -17,11 +18,11 @@ import pandas as pd
 
 
 # =============================================================================
-# Private helpers
+# Helper functions
 # =============================================================================
 
 
-def _validate_db_engines(db_engines: dict, required_dbs: list) -> None:
+def validate_db_engines(db_engines: dict, required_dbs: list) -> None:
     """Raise RuntimeError if any required DB engine is absent from db_engines.
 
     Args:
@@ -30,6 +31,15 @@ def _validate_db_engines(db_engines: dict, required_dbs: list) -> None:
 
     Raises:
         RuntimeError: One or more required DB connections are missing.
+
+    Example:
+        >>> from ppym.data.db import create_engine_multi
+        >>> db_engines = create_engine_multi(['prime_eagle'], user)
+        >>> validate_db_engines(db_engines, ['prime_eagle', 'prime_equities'])
+        RuntimeError: Missing required DB connection(s): prime_equities. ...
+
+    Owner:
+        Romelon Chetty
     """
     missing = [db for db in required_dbs if not db_engines.get(db)]
     if missing:
@@ -39,46 +49,100 @@ def _validate_db_engines(db_engines: dict, required_dbs: list) -> None:
         )
 
 
-def _get_fund_list(db_engines: dict) -> pd.DataFrame:
+def get_fund_list(db_engines: dict) -> pd.DataFrame:
     """Return equity portfolio strategy metadata from prime_equities.
 
     Args:
-        db_engines: Mapping of engine name to SQLAlchemy engine.
+        db_engines: Mapping of engine name to SQLAlchemy engine. Required
+            key is 'prime_equities'.
 
     Returns:
-        DataFrame containing all rows from equity_portfolio_strategy.
+        DataFrame containing all rows from equity_portfolio_strategy with
+        columns including portfolio_code, portfolio_name, vehicle, strategy.
+
+    Raises:
+        RuntimeError: If 'prime_equities' is missing from db_engines.
+
+    Example:
+        >>> from ppym.data.db import create_engine_multi
+        >>> db_engines = create_engine_multi(['prime_equities'], user)
+        >>> df = get_fund_list(db_engines)
+        >>> df[['portfolio_code', 'portfolio_name']].head()
+          portfolio_code              portfolio_name
+        0            PEQ  Prescient Core Top 40 ...
+
+    Owner:
+        Romelon Chetty
     """
+    validate_db_engines(db_engines, ["prime_equities"])
     return pd.read_sql(
         "SELECT * FROM prime_equities.equity_portfolio_strategy",
         con=db_engines["prime_equities"],
     )
 
 
-def _get_benchmark_data(db_engines: dict) -> pd.DataFrame:
+def get_benchmark_data(db_engines: dict) -> pd.DataFrame:
     """Return all benchmark mappings from prime_eagle.s_portfolio_bench.
 
     Args:
-        db_engines: Mapping of engine name to SQLAlchemy engine.
+        db_engines: Mapping of engine name to SQLAlchemy engine. Required
+            key is 'prime_eagle'.
 
     Returns:
-        DataFrame with portfolio-to-benchmark relationships.
+        DataFrame with columns including portfolio_code, benchmark_code,
+        benchmark_type covering all portfolio-to-benchmark relationships.
+
+    Raises:
+        RuntimeError: If 'prime_eagle' is missing from db_engines.
+
+    Example:
+        >>> from ppym.data.db import create_engine_multi
+        >>> db_engines = create_engine_multi(['prime_eagle'], user)
+        >>> df = get_benchmark_data(db_engines)
+        >>> df[df['benchmark_type'] == 'monthly performance'].head()
+          portfolio_code benchmark_code      benchmark_type
+        0            PEQ        TOP40TR  monthly performance
+
+    Owner:
+        Romelon Chetty
     """
+    validate_db_engines(db_engines, ["prime_eagle"])
     return pd.read_sql(
         "SELECT * FROM prime_eagle.s_portfolio_bench",
         con=db_engines["prime_eagle"],
     )
 
 
-def _get_instrument_metadata(db_engines: dict) -> pd.DataFrame:
+def get_instrument_metadata(db_engines: dict) -> pd.DataFrame:
     """Return instrument metadata including underlying codes, types and tags.
 
+    Fetches all rows from prime_compliance.tmp_instruments, explodes the JSON
+    tags column into flat columns, and returns a subset of the most useful
+    fields.
+
     Args:
-        db_engines: Mapping of engine name to SQLAlchemy engine.
+        db_engines: Mapping of engine name to SQLAlchemy engine. Required
+            key is 'prime_compliance'.
 
     Returns:
-        DataFrame with columns instrument_code, underlying_instrument_code,
-        security_subtype, instrument_type.
+        DataFrame with columns [instrument_code, underlying_instrument_code,
+        security_subtype, instrument_type].
+
+    Raises:
+        RuntimeError: If 'prime_compliance' is missing from db_engines.
+
+    Example:
+        >>> from ppym.data.db import create_engine_multi
+        >>> db_engines = create_engine_multi(['prime_compliance'], user)
+        >>> df = get_instrument_metadata(db_engines)
+        >>> df[df['instrument_type'] == 'IDXFT'].head()
+          instrument_code underlying_instrument_code instrument_type
+        0          ALSI40                       J200          IDXFT
+
+    Owner:
+        Romelon Chetty
     """
+    validate_db_engines(db_engines, ["prime_compliance"])
     df = pd.read_sql(
         "SELECT * FROM prime_compliance.tmp_instruments",
         con=db_engines["prime_compliance"],
@@ -100,30 +164,49 @@ def _get_instrument_metadata(db_engines: dict) -> pd.DataFrame:
     ]
 
 
-def _get_holdings_with_effective_exposure(
+def get_holdings_with_effective_exposure(
     db_engines: dict,
     portfolio_codes: list,
     val_date: str,
     df_instrument_meta: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Retrieve holdings and attach an effective_exposure column per instrument type.
+    """Retrieve holdings and compute effective exposure for each instrument type.
 
-    Effective exposure is computed as follows:
+    Effective exposure is calculated as follows:
         - Index futures (IDXFT): holding × price × multiplier / sum_market_value
         - TRS: holding × price / sum_market_value
         - Physical equity & ELN (EQ, EQUITY - ELN): allin_market_value / sum_market_value
 
     Args:
-        db_engines: Mapping of engine name to SQLAlchemy engine.
+        db_engines: Mapping of engine name to SQLAlchemy engine. Required
+            key is 'prime_eagle'.
         portfolio_codes: List of portfolio codes to retrieve holdings for.
-        val_date: Valuation date in YYYY-MM-DD format.
-        df_instrument_meta: Output of _get_instrument_metadata(), used to join
-            underlying_instrument_code and instrument_type onto holdings.
+        val_date: Valuation date in YYYY-MM-DD format. Required.
+        df_instrument_meta: Output of get_instrument_metadata(), used to join
+            underlying_instrument_code onto holdings.
 
     Returns:
-        Holdings DataFrame with effective_exposure, sum_market_value, and
-        multiplier columns appended.
+        Full holdings DataFrame with additional columns effective_exposure,
+        sum_market_value, and multiplier (NaN where not applicable).
+
+    Raises:
+        RuntimeError: If 'prime_eagle' is missing from db_engines.
+
+    Example:
+        >>> from ppym.data.db import create_engine_multi
+        >>> db_engines = create_engine_multi(['prime_eagle', 'prime_compliance'], user)
+        >>> df_meta = get_instrument_metadata(db_engines)
+        >>> df = get_holdings_with_effective_exposure(
+        ...     db_engines, ['PCEQTF'], '2025-01-09', df_meta)
+        >>> df[['portfolio_code', 'instrument_code', 'effective_exposure']].head()
+          portfolio_code instrument_code  effective_exposure
+        0         PCEQTF            J200            0.087...
+
+    Owner:
+        Romelon Chetty
     """
+    validate_db_engines(db_engines, ["prime_eagle"])
+
     df_holdings = pd.read_sql(
         """CALL prime_eagle.proc_get_eagle_holdings(
                %(fcode)s, %(item)s, %(sdate)s, %(edate)s)""",
@@ -199,25 +282,48 @@ def _get_holdings_with_effective_exposure(
     return df_holdings
 
 
-def _get_index_constituents(
+def get_index_constituents(
     db_engines: dict,
     list_of_indices: list,
     val_date: str,
 ) -> tuple:
     """Fetch JSE and MSCI index constituents and return them as a combined DataFrame.
 
+    MSCI real_time_tickers MXWO and MXEF are resolved to their internal
+    msci_index_code before fetching constituents. JSE and MSCI weights are
+    normalised to decimals (MSCI weights are divided by 100).
+
     Args:
-        db_engines: Mapping of engine name to SQLAlchemy engine.
-        list_of_indices: Index codes to retrieve (JSE and/or MSCI real_time_tickers).
-        val_date: Valuation date in YYYY-MM-DD format.
+        db_engines: Mapping of engine name to SQLAlchemy engine. Required
+            keys are 'prime_jse' and 'prime_msci'.
+        list_of_indices: Index codes to retrieve. May include JSE index codes
+            (e.g. 'J200') and/or MSCI real_time_tickers (e.g. 'MXWO').
+        val_date: Valuation date in YYYY-MM-DD format. Required.
 
     Returns:
         Tuple of (df_indices_combined, df_gics_sector_names) where:
-            df_indices_combined: columns [index, equity_alpha_code,
+            df_indices_combined has columns [index, equity_alpha_code,
                 constituent_name, weight] with weights as decimals.
-            df_gics_sector_names: columns [ticker, sector] mapping MSCI bb_ticker
-                to GICS sector name.
+            df_gics_sector_names has columns [ticker, sector] mapping each
+                MSCI bb_ticker to its GICS sector name.
+
+    Raises:
+        RuntimeError: If 'prime_jse' or 'prime_msci' is missing from db_engines.
+
+    Example:
+        >>> from ppym.data.db import create_engine_multi
+        >>> db_engines = create_engine_multi(['prime_jse', 'prime_msci'], user)
+        >>> df_combined, df_gics = get_index_constituents(
+        ...     db_engines, ['J200', 'MXWO'], '2025-01-09')
+        >>> df_combined[df_combined['index'] == 'J200'].head()
+          index equity_alpha_code constituent_name  weight
+        0  J200               NPN          Naspers   0.212
+
+    Owner:
+        Romelon Chetty
     """
+    validate_db_engines(db_engines, ["prime_jse", "prime_msci"])
+
     # JSE index constituents
     df_jse = pd.read_sql(
         """CALL prime_jse.proc_get_jse_index(
@@ -274,7 +380,7 @@ def _get_index_constituents(
     df_gics.rename(columns={"bb_ticker": "ticker", "gics_name": "sector"}, inplace=True)
     df_gics_sector_names = df_gics[["ticker", "sector"]]
 
-    # Prepare and combine
+    # Prepare and combine JSE + MSCI
     df_msci = df_msci[["real_time_ticker", "bb_ticker", "security_name", "weight"]].copy()
     df_msci["weight"] = df_msci["weight"] / 100
     df_msci.rename(
@@ -293,29 +399,43 @@ def _get_index_constituents(
     return df_indices_combined, df_gics_sector_names
 
 
-def _compute_lookthrough_exposures(
+def compute_lookthrough_exposures(
     df_holdings: pd.DataFrame,
     df_holdings_eff_exp: pd.DataFrame,
     df_indices_combined: pd.DataFrame,
 ) -> pd.DataFrame:
     """Expand derivative positions into underlying share-level exposures.
 
-    For each derivative row (futures, TRS, ELN), multiplies the fund's
-    effective exposure by each constituent's index weight to produce a
-    synthetic physical position. Also handles the PCGEF feeder fund by
-    scaling PGPCGE exposures by the CIS weight in PCGEF.
+    For each derivative row (futures, TRS, ELN) the fund's effective exposure
+    is multiplied by each index constituent's weight to produce a synthetic
+    physical position. The PCGEF feeder fund is also handled by scaling
+    PGPCGE share-level exposures by the CIS weight held in PCGEF.
 
     Args:
         df_holdings: Full holdings DataFrame returned by
-            _get_holdings_with_effective_exposure().
+            get_holdings_with_effective_exposure(). Must include columns
+            portfolio_code, instrument_type, allin_market_value,
+            sum_market_value.
         df_holdings_eff_exp: Subset of df_holdings filtered to equity
-            instrument types with non-zero effective_exposure.
-        df_indices_combined: Combined index constituent data from
-            _get_index_constituents().
+            instrument types (IDXFT, TRS, EQUITY - ELN, EQ) with non-zero
+            effective_exposure.
+        df_indices_combined: Output of get_index_constituents() with columns
+            [index, equity_alpha_code, weight].
 
     Returns:
         DataFrame with columns [portfolio_code, instrument_code,
         effective_exposure] representing look-through share-level positions.
+
+    Example:
+        >>> df_eq = compute_lookthrough_exposures(
+        ...     df_holdings, df_holdings_eff_exp, df_indices_combined)
+        >>> df_eq.groupby('portfolio_code')['effective_exposure'].sum()
+        portfolio_code
+        PCEQTF    0.993
+        PEQ       0.988
+
+    Owner:
+        Romelon Chetty
     """
     df_derivatives = df_holdings_eff_exp[
         df_holdings_eff_exp["instrument_type"] != "EQ"
@@ -366,32 +486,59 @@ def _compute_lookthrough_exposures(
     return df_eq_rows
 
 
-def _compute_share_level_exposures(
-    db_engines: dict,
-    val_date: str,
-) -> tuple:
-    """Core computation shared by equity_beta_share_level_exposure, equity_active_sector_exposures and equity_top10_exposures.
+def compute_share_level_exposures(db_engines: dict, val_date: str) -> tuple:
+    """Orchestrate the full share-level exposure computation for all equity funds.
 
-    Retrieves holdings, computes effective exposures, expands derivatives into
-    their underlying index constituents, and aggregates to portfolio/share level.
+    This is the core helper used by equity_beta_share_level_exposure,
+    equity_active_sector_exposures, and equity_top10_exposures. It retrieves
+    fund metadata, holdings, index constituents, and benchmark mappings, then
+    delegates to get_holdings_with_effective_exposure(),
+    get_index_constituents(), and compute_lookthrough_exposures() before
+    aggregating to portfolio/share level.
 
     Args:
-        db_engines: Mapping of engine name to SQLAlchemy engine. Requires
-            prime_eagle, prime_equities, prime_jse, prime_msci,
-            prime_compliance.
-        val_date: Valuation date in YYYY-MM-DD format.
+        db_engines: Mapping of engine name to SQLAlchemy engine. Required
+            keys are 'prime_eagle', 'prime_equities', 'prime_jse',
+            'prime_msci', and 'prime_compliance'.
+        val_date: Valuation date in YYYY-MM-DD format. Required.
 
     Returns:
-        Tuple of four DataFrames:
-            df_share_level: columns [portfolio_code, instrument_code,
-                effective_exposure], sorted by portfolio and descending exposure.
-            df_indices_combined: Combined JSE + MSCI constituent data.
-            df_mdd_bench: Benchmark codes for each fund (monthly performance).
-            df_gics_sector_names: GICS sector name per MSCI bb_ticker.
+        Tuple of four objects:
+            df_share_level (DataFrame): columns [portfolio_code,
+                instrument_code, effective_exposure], sorted by portfolio
+                ascending and effective_exposure descending.
+            df_indices_combined (DataFrame): Combined JSE + MSCI constituent
+                data from get_index_constituents().
+            df_mdd_bench (DataFrame): Monthly-performance benchmark codes per
+                fund, columns [portfolio_code, benchmark_code].
+            df_gics_sector_names (DataFrame): GICS sector name per MSCI
+                bb_ticker, columns [ticker, sector].
+
+    Raises:
+        RuntimeError: If any required DB connection is missing.
+
+    Example:
+        >>> from ppym.data.db import create_engine_multi
+        >>> db_engines = create_engine_multi(
+        ...     ['prime_eagle', 'prime_equities', 'prime_jse',
+        ...      'prime_msci', 'prime_compliance'], user)
+        >>> df_sl, df_idx, df_bench, df_gics = compute_share_level_exposures(
+        ...     db_engines, '2025-01-09')
+        >>> df_sl.head()
+          portfolio_code instrument_code  effective_exposure
+        0       ECICBALE             NPN            0.098707
+
+    Owner:
+        Romelon Chetty
     """
-    df_funds = _get_fund_list(db_engines)
-    df_bench_all = _get_benchmark_data(db_engines)
-    df_instrument_meta = _get_instrument_metadata(db_engines)
+    validate_db_engines(
+        db_engines,
+        ["prime_eagle", "prime_equities", "prime_jse", "prime_msci", "prime_compliance"],
+    )
+
+    df_funds = get_fund_list(db_engines)
+    df_bench_all = get_benchmark_data(db_engines)
+    df_instrument_meta = get_instrument_metadata(db_engines)
 
     df_mdd_bench = df_bench_all.loc[
         df_bench_all["portfolio_code"].isin(df_funds["portfolio_code"])
@@ -399,7 +546,7 @@ def _compute_share_level_exposures(
         ["portfolio_code", "benchmark_code"],
     ]
 
-    df_holdings = _get_holdings_with_effective_exposure(
+    df_holdings = get_holdings_with_effective_exposure(
         db_engines,
         df_funds["portfolio_code"].tolist(),
         val_date,
@@ -422,11 +569,11 @@ def _compute_share_level_exposures(
         + df_mdd_bench["benchmark_code"].str.rstrip("T").tolist()
     )
 
-    df_indices_combined, df_gics_sector_names = _get_index_constituents(
+    df_indices_combined, df_gics_sector_names = get_index_constituents(
         db_engines, list_of_indices, val_date
     )
 
-    df_eq_rows = _compute_lookthrough_exposures(
+    df_eq_rows = compute_lookthrough_exposures(
         df_holdings, df_holdings_eff_exp, df_indices_combined
     )
 
@@ -444,7 +591,7 @@ def _compute_share_level_exposures(
 
 
 # =============================================================================
-# Public functions
+# Public analysis functions
 # =============================================================================
 
 
@@ -464,14 +611,14 @@ def equity_beta_positioning(db_engines: dict, val_date: str) -> pd.DataFrame:
         val_date: Valuation date in YYYY-MM-DD format. Required.
 
     Returns:
-        DataFrame with one row per fund and columns:
-        portfolio_code, portfolio_name, vehicle, fund_size, total_equity,
-        derivatives, futures, trs, notes, physical, Un-equitised, strategy,
-        datestamp. All exposure columns are rounded to three decimal places.
+        DataFrame with one row per fund and columns portfolio_code,
+        portfolio_name, vehicle, fund_size, total_equity, derivatives,
+        futures, trs, notes, physical, Un-equitised, strategy, datestamp.
+        All exposure columns are rounded to three decimal places.
 
     Raises:
-        RuntimeError: One or more required DB connections are missing.
-        ValueError: If val_date is not in YYYY-MM-DD format.
+        RuntimeError: If 'prime_eagle' or 'prime_equities' is missing from
+            db_engines.
 
     Example:
         >>> import ppym.data.db as pimdb
@@ -486,7 +633,7 @@ def equity_beta_positioning(db_engines: dict, val_date: str) -> pd.DataFrame:
     Owner:
         Romelon Chetty
     """
-    _validate_db_engines(db_engines, ["prime_eagle", "prime_equities"])
+    validate_db_engines(db_engines, ["prime_eagle", "prime_equities"])
 
     df_base = pd.read_sql(
         "CALL prime_eagle.proc_get_equity_effective_exposure(%(edate)s)",
@@ -494,7 +641,7 @@ def equity_beta_positioning(db_engines: dict, val_date: str) -> pd.DataFrame:
         params={"edate": val_date},
         parse_dates=["datestamp"],
     )
-    df_funds = _get_fund_list(db_engines)
+    df_funds = get_fund_list(db_engines)
 
     df_base["futures"] = df_base["price_futures"] + df_base["total_return_futures"]
     df_base["derivatives"] = df_base["futures"] + df_base["trs"] + df_base["notes"]
@@ -503,15 +650,13 @@ def equity_beta_positioning(db_engines: dict, val_date: str) -> pd.DataFrame:
 
     df_base = pd.merge(left=df_base, right=df_funds, how="right", on="portfolio_code")
 
-    df_beta_positioning = df_base[
+    return df_base[
         [
             "portfolio_code", "portfolio_name", "vehicle", "fund_size",
             "total_equity", "derivatives", "futures", "trs", "notes",
             "physical", "Un-equitised", "strategy", "datestamp",
         ]
     ].round(3)
-
-    return df_beta_positioning
 
 
 def equity_beta_share_level_exposure(db_engines: dict, val_date: str) -> pd.DataFrame:
@@ -520,7 +665,7 @@ def equity_beta_share_level_exposure(db_engines: dict, val_date: str) -> pd.Data
     Computes effective exposures for all equity instrument types (physical
     equity, index futures, TRS, ELN) and expands derivatives into their
     underlying index constituents so that the result represents a pure
-    share-level view. The PCGEF feeder fund is handled by scaling the PGPCGE
+    share-level view. The PCGEF feeder fund is handled by scaling PGPCGE
     exposures by the CIS weight held in PCGEF.
 
     Args:
@@ -536,8 +681,7 @@ def equity_beta_share_level_exposure(db_engines: dict, val_date: str) -> pd.Data
         effective_exposure descending.
 
     Raises:
-        RuntimeError: One or more required DB connections are missing.
-        ValueError: If val_date is not in YYYY-MM-DD format.
+        RuntimeError: If any required DB connection is missing from db_engines.
 
     Example:
         >>> import ppym.data.db as pimdb
@@ -554,12 +698,12 @@ def equity_beta_share_level_exposure(db_engines: dict, val_date: str) -> pd.Data
     Owner:
         Romelon Chetty
     """
-    _validate_db_engines(
+    validate_db_engines(
         db_engines,
         ["prime_eagle", "prime_equities", "prime_jse", "prime_msci", "prime_compliance"],
     )
 
-    df_share_level, _, _, _ = _compute_share_level_exposures(db_engines, val_date)
+    df_share_level, _, _, _ = compute_share_level_exposures(db_engines, val_date)
 
     return df_share_level
 
@@ -586,8 +730,7 @@ def equity_active_sector_exposures(db_engines: dict, val_date: str) -> pd.DataFr
         and active = fund - benchmark.
 
     Raises:
-        RuntimeError: One or more required DB connections are missing.
-        ValueError: If val_date is not in YYYY-MM-DD format.
+        RuntimeError: If any required DB connection is missing from db_engines.
 
     Example:
         >>> import ppym.data.db as pimdb
@@ -603,7 +746,7 @@ def equity_active_sector_exposures(db_engines: dict, val_date: str) -> pd.DataFr
     Owner:
         Romelon Chetty
     """
-    _validate_db_engines(
+    validate_db_engines(
         db_engines,
         [
             "prime_eagle", "prime_equities", "prime_jse", "prime_msci",
@@ -612,10 +755,10 @@ def equity_active_sector_exposures(db_engines: dict, val_date: str) -> pd.DataFr
     )
 
     df_share_level, df_indices_combined, df_mdd_bench, df_gics_sector_names = (
-        _compute_share_level_exposures(db_engines, val_date)
+        compute_share_level_exposures(db_engines, val_date)
     )
 
-    # Build sector classification for JSE shares via EAV proc_describe_entity
+    # Build ICB sector classification for JSE shares via EAV proc_describe_entity
     jse_codes = df_share_level.loc[
         ~df_share_level["portfolio_code"].isin(["PGPCGE", "PGPCEM", "PCGEF"]),
         "instrument_code",
@@ -693,9 +836,9 @@ def equity_active_sector_exposures(db_engines: dict, val_date: str) -> pd.DataFr
 def equity_top10_exposures(db_engines: dict, val_date: str) -> pd.DataFrame:
     """Return the top 10 share-level holdings by effective exposure for each fund.
 
-    Derives results from equity_beta_share_level_exposure and enriches the
-    output with constituent names from the relevant index data and a rank
-    column (1 = largest holding).
+    Computes look-through share-level exposures via compute_share_level_exposures()
+    and enriches the top-10 rows per fund with constituent names from the
+    relevant index data and a rank column (1 = largest holding).
 
     Args:
         db_engines: A dictionary of SQLAlchemy engines keyed by name. Required
@@ -711,8 +854,7 @@ def equity_top10_exposures(db_engines: dict, val_date: str) -> pd.DataFrame:
         effective_exposure descending within each fund.
 
     Raises:
-        RuntimeError: One or more required DB connections are missing.
-        ValueError: If val_date is not in YYYY-MM-DD format.
+        RuntimeError: If any required DB connection is missing from db_engines.
 
     Example:
         >>> import ppym.data.db as pimdb
@@ -722,18 +864,18 @@ def equity_top10_exposures(db_engines: dict, val_date: str) -> pd.DataFrame:
         >>> df = equity_top10_exposures(db_engines, '2025-01-09')
         >>> df[df['portfolio_code'] == 'PCEQTF']
           portfolio_code instrument_code constituent_name  effective_exposure  rank
-        0         PCEQTF             NPN          Naspers             0.0987     1
-        1         PCEQTF             FSR   FirstRand Ltd.             0.0605     2
+        0         PCEQTF             NPN          Naspers            0.098707     1
+        1         PCEQTF             FSR   Firstrand Ltd.            0.060474     2
 
     Owner:
         Romelon Chetty
     """
-    _validate_db_engines(
+    validate_db_engines(
         db_engines,
         ["prime_eagle", "prime_equities", "prime_jse", "prime_msci", "prime_compliance"],
     )
 
-    df_share_level, df_indices_combined, _, _ = _compute_share_level_exposures(
+    df_share_level, df_indices_combined, _, _ = compute_share_level_exposures(
         db_engines, val_date
     )
 
