@@ -141,33 +141,71 @@
 
 <div class="container">
     <br>
-    <h1 class="prime-h1"> Equity Portfolio Monitor </h1>
-    <ul class="nav f-nav-tabs nav-justified">
+    <h1 class="prime-h1">Equity Portfolio Monitor</h1>
+
+    <!-- Shared date picker – sits above all tabs -->
+    <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+        <input type="date" class="form-control" value="{{p_val_date}}"
+               id="valuation_date" name="valuation_date"
+               style="width:200px;" required onchange="reloadActiveTab()">
+    </div>
+
+    <!-- Five top-level tabs -->
+    <ul class="nav f-nav-tabs nav-justified" id="mainTabs">
         <li class="nav-item">
-            <a class="f-nav-link active " href="#nav-1" data-bs-toggle="tab" data-bs-target="#nav-1"
-                aria-controls="nav-1"> Positioning</a>
+            <a class="f-nav-link active" data-bs-toggle="tab"
+               data-bs-target="#tab-equity-exposure">Equity Exposure</a>
+        </li>
+        <li class="nav-item">
+            <a class="f-nav-link" data-bs-toggle="tab"
+               data-bs-target="#tab-cover">Cover</a>
+        </li>
+        <li class="nav-item">
+            <a class="f-nav-link" data-bs-toggle="tab"
+               data-bs-target="#tab-alpha">Alpha Expectations</a>
+        </li>
+        <li class="nav-item">
+            <a class="f-nav-link" data-bs-toggle="tab"
+               data-bs-target="#tab-issuer">Issuer Split</a>
+        </li>
+        <li class="nav-item">
+            <a class="f-nav-link" data-bs-toggle="tab"
+               data-bs-target="#tab-dates">Salient Dates</a>
         </li>
     </ul>
 
-    <div class="tab-content" id="nav-tabContent">
-        <div class="tab-pane fade show active " id="nav-1" role="tabpanel" aria-labelledby="nav-1-tab">
+    <div class="tab-content" id="mainTabContent">
+
+        <!-- Tab 1 – Equity Exposure -->
+        <div class="tab-pane fade show active" id="tab-equity-exposure" role="tabpanel">
             <br>
-            <div id="loaddate" style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-                <select class="form-select" id="view" name="view" style="width: 400px;"
-                    required onchange="update_tables()">
-                    <option value="Beta" selected='selected'>Beta</option>
-                    <option value="Alpha">Alpha</option>
-                </select>
-                <input type="date" class="form-control" value="{{p_val_date}}" id="valuation_date" name="valuation_date"
-                    style="width: 400px;" required onchange="update_tables()">
-            </div>
-            <br>
-            <div id="equitypositioning">
-                <h2 class="prime-h2">Equity Positioning</h2>
-                <span id="positioning_table"></span>
-                <br><br>
-            </div>
+            <span id="equity_exposure_table"></span>
         </div>
+
+        <!-- Tab 2 – Cover -->
+        <div class="tab-pane fade" id="tab-cover" role="tabpanel">
+            <br>
+            <span id="cover_table"></span>
+        </div>
+
+        <!-- Tab 3 – Alpha Expectations -->
+        <div class="tab-pane fade" id="tab-alpha" role="tabpanel">
+            <br>
+            <span id="alpha_table"></span>
+        </div>
+
+        <!-- Tab 4 – Issuer Split -->
+        <div class="tab-pane fade" id="tab-issuer" role="tabpanel">
+            <br>
+            <span id="issuer_table"></span>
+        </div>
+
+        <!-- Tab 5 – Salient Dates -->
+        <div class="tab-pane fade" id="tab-dates" role="tabpanel">
+            <br>
+            <span id="dates_table"></span>
+        </div>
+
     </div>
 </div>
 
@@ -199,8 +237,8 @@
 
 <script>
 
-// Returns a DataTables render function that draws a proportional data-bar
-// behind the percentage label.  bgColor / borderColor are CSS colour strings.
+// ── Bar render helpers ────────────────────────────────────────────────
+
 function barRender(bgColor, borderColor) {
     return function(data, type) {
         if (type === 'display') {
@@ -217,8 +255,6 @@ function barRender(bgColor, borderColor) {
     };
 }
 
-// Colour config shared between the table bars and the modal bars.
-// Keys are column indices; columns without an entry get plain text.
 var MODAL_BAR_COLORS = {
     4:  { bg: 'rgba(198,54,99,0.40)',   border: 'rgba(198,54,99,0.55)'  },  // Equity Exposure – Crimson
     6:  { bg: 'rgba(0,148,213,0.45)',   border: 'rgba(0,148,213,0.60)'  },  // Futures          – Blue
@@ -227,12 +263,10 @@ var MODAL_BAR_COLORS = {
     9:  { bg: 'rgba(187,179,35,0.55)',  border: 'rgba(187,179,35,0.65)' }   // Physical         – Olive
 };
 
-// Populate and show the fund detail modal for a clicked row.
-// rowData  – raw DataTables row object (the original JS object from the API)
-// columns  – DataTables columns array  [{title, data, ...}, ...]
+// ── Fund detail modal ─────────────────────────────────────────────────
+
 function populateFundModal(rowData, columns) {
 
-    // Helper: get the value for column i from the row data
     function val(i) {
         var col = columns[i];
         if (!col) return '';
@@ -241,16 +275,12 @@ function populateFundModal(rowData, columns) {
             : rowData[i];
     }
 
-    // ── Modal header: fund code + name ────────────────────────────────
     $('#fundModalTitle').text(val(0));
     $('#fundModalSubtitle').text(val(1));
 
-    // ── Build body ────────────────────────────────────────────────────
-    var html = '';
-
-    // Info pills row (strategy, date, fund size)
-    var strategy = rowData.Strategy  || rowData['Strategy']  || '';
-    var date     = rowData.Datestamp || rowData['Datestamp'] || '';
+    var html     = '';
+    var strategy = rowData.Strategy  || '';
+    var date     = rowData.Datestamp || '';
     var fundSize = parseFloat(val(3));
 
     html += '<div class="d-flex flex-wrap gap-3 mb-3 pb-3 border-bottom">';
@@ -260,8 +290,7 @@ function populateFundModal(rowData, columns) {
                         + '<br><strong>' + fundSize.toLocaleString('en-US', {maximumFractionDigits: 0}) + '</strong></div>';
     html += '</div>';
 
-    // Exposure bar rows (columns 4–10)
-    html += '<h6 class="mb-2 text-muted" style="font-size:0.78rem; text-transform:uppercase; letter-spacing:.05em;">Equity Exposures</h6>';
+    html += '<h6 class="mb-2 text-muted" style="font-size:0.78rem;text-transform:uppercase;letter-spacing:.05em;">Equity Exposures</h6>';
     html += '<div class="fund-modal-metrics">';
 
     [4, 5, 6, 7, 8, 9, 10].forEach(function(i) {
@@ -283,21 +312,20 @@ function populateFundModal(rowData, columns) {
     });
 
     html += '</div>';
-
     $('#fundModalBody').html(html);
 }
+
+// ── DataTable builder (unchanged) ────────────────────────────────────
 
 function make_data_table(tableId, columns, table_data) {
 
     const table_id = '#' + tableId;
 
-    // Destroy existing DataTable if it exists
     if ($.fn.DataTable.isDataTable(table_id)) {
         $(table_id).DataTable().destroy();
         $(table_id).empty();
     }
 
-    // Build thead dynamically
     var thead = '<thead><tr>';
     columns.forEach(function(column) {
         thead += '<th>' + column.title + '</th>';
@@ -318,8 +346,6 @@ function make_data_table(tableId, columns, table_data) {
         ordering: false,
 
         columnDefs: [
-
-            // ── Fund code (0): clickable link ─────────────────────────
             {
                 targets: [0],
                 render: function(data, type) {
@@ -328,86 +354,51 @@ function make_data_table(tableId, columns, table_data) {
                     return data;
                 }
             },
-
-            // ── Fund size (3): right-aligned integer ──────────────────
             {
                 targets: [3],
                 className: "dt-right",
                 render: $.fn.dataTable.render.number(',', '.', 0, '', '')
             },
-
-            // ── Equity Exposure (4): Crimson bar ──────────────────────
             {
-                targets: [4],
-                width: "10%",
-                className: "text-center",
+                targets: [4], width: "10%", className: "text-center",
                 render: barRender('rgba(198,54,99,0.40)', 'rgba(198,54,99,0.55)')
             },
-
-            // ── Derivatives (5): plain text, no bar ───────────────────
             {
-                targets: [5],
-                width: "10%",
-                className: "text-center",
+                targets: [5], width: "10%", className: "text-center",
                 render: function(data, type) {
                     if (type === 'display') return (parseFloat(data) || 0).toFixed(1) + '%';
                     return data;
                 }
             },
-
-            // ── Futures (6): Blue bar ─────────────────────────────────
             {
-                targets: [6],
-                width: "10%",
-                className: "text-center",
+                targets: [6], width: "10%", className: "text-center",
                 render: barRender('rgba(0,148,213,0.45)', 'rgba(0,148,213,0.60)')
             },
-
-            // ── TRS (7): Red bar ──────────────────────────────────────
             {
-                targets: [7],
-                width: "10%",
-                className: "text-center",
+                targets: [7], width: "10%", className: "text-center",
                 render: barRender('rgba(229,85,79,0.40)', 'rgba(229,85,79,0.55)')
             },
-
-            // ── ELN (8): Green bar ────────────────────────────────────
             {
-                targets: [8],
-                width: "10%",
-                className: "text-center",
+                targets: [8], width: "10%", className: "text-center",
                 render: barRender('rgba(0,143,82,0.40)', 'rgba(0,143,82,0.55)')
             },
-
-            // ── Physical (9): Olive bar ───────────────────────────────
             {
-                targets: [9],
-                width: "10%",
-                className: "text-center",
+                targets: [9], width: "10%", className: "text-center",
                 render: barRender('rgba(187,179,35,0.55)', 'rgba(187,179,35,0.65)')
             },
-
-            // ── Un-Equitised (10): plain text, no bar ────────────────
             {
-                targets: [10],
-                width: "10%",
-                className: "text-center",
+                targets: [10], width: "10%", className: "text-center",
                 render: function(data, type) {
                     if (type === 'display') return (parseFloat(data) || 0).toFixed(1) + '%';
                     return data;
                 }
             },
-
-            // ── Hidden columns ────────────────────────────────────────
             { targets: [11, 12], visible: false },
-
-            // ── Name column: wider ────────────────────────────────────
             { targets: [1], width: "40%" }
         ]
 
     });
 
-    // Open fund detail modal when the portfolio code cell is clicked
     $(table_id + ' tbody').on('click', '.fund-link', function() {
         var dt      = $(table_id).DataTable();
         var rowData = dt.row($(this).closest('tr')).data();
@@ -416,42 +407,25 @@ function make_data_table(tableId, columns, table_data) {
     });
 }
 
+// ── Per-tab data loaders ──────────────────────────────────────────────
 
-function update_tables() {
-
-    $('#modal_loading').modal('show');
-
-    // Clear old tables
-    document.getElementById('positioning_table').innerHTML = '';
-
-    var lastTab = localStorage.getItem('lastTab');
-
-    $('a[data-bs-toggle="tab"]').on('shown.bs.tab', function(e) {
-        localStorage.setItem('lastTab', $(this).attr('href'));
-    });
-
-    if (lastTab) {
-        $('[href="' + lastTab + '"]').tab('show');
-    }
-
-    $('a[data-bs-toggle="tab"]').on('shown.bs.tab', function() {
-        $($.fn.dataTable.tables(true)).DataTable().columns.adjust();
-    });
+function load_equity_exposure() {
+    var container = document.getElementById('equity_exposure_table');
+    container.innerHTML = '';
 
     var val_date = document.getElementById("valuation_date").value;
     var url = '/fast/equities/equity-beta-positioning?val_date=' + val_date + '&output=json';
 
     $.getJSON(url, function(data) {
-
         var tableData    = data.data;
         var tableColumns = data.columns;
 
         for (const [tableName, subTableData] of Object.entries(tableData)) {
-            var tableId  = tableName.replace(' ', '_');
+            var tableId  = tableName.replace(/\s/g, '_');
             var date     = subTableData[0].Datestamp;
             var strategy = subTableData[0].Strategy;
 
-            document.getElementById('positioning_table').insertAdjacentHTML('beforeend',
+            container.insertAdjacentHTML('beforeend',
                 '<br>'
               + '<div class="positioning-header">'
               +   '<p class="prime-h3">' + strategy + '</p>'
@@ -462,13 +436,105 @@ function update_tables() {
 
             make_data_table(tableId, tableColumns, subTableData);
         }
-
+    }).always(function() {
         $('#modal_loading').modal('hide');
     });
 }
 
+function load_cover() {
+    var container = document.getElementById('cover_table');
+    container.innerHTML = '';
+    var val_date = document.getElementById("valuation_date").value;
+
+    // TODO: replace URL with the cover endpoint
+    // var url = '/fast/equities/equity-cover?val_date=' + val_date + '&output=json';
+    // $.getJSON(url, function(data) { ... }).always(...);
+
+    container.innerHTML = '<p class="text-muted mt-3">Cover — connect API endpoint here.</p>';
+    $('#modal_loading').modal('hide');
+}
+
+function load_alpha() {
+    var container = document.getElementById('alpha_table');
+    container.innerHTML = '';
+    var val_date = document.getElementById("valuation_date").value;
+
+    // TODO: replace URL with the alpha expectations endpoint
+    // var url = '/fast/equities/equity-alpha?val_date=' + val_date + '&output=json';
+    // $.getJSON(url, function(data) { ... }).always(...);
+
+    container.innerHTML = '<p class="text-muted mt-3">Alpha Expectations — connect API endpoint here.</p>';
+    $('#modal_loading').modal('hide');
+}
+
+function load_issuer() {
+    var container = document.getElementById('issuer_table');
+    container.innerHTML = '';
+    var val_date = document.getElementById("valuation_date").value;
+
+    // TODO: replace URL with the issuer split endpoint
+    // var url = '/fast/equities/equity-issuer-split?val_date=' + val_date + '&output=json';
+    // $.getJSON(url, function(data) { ... }).always(...);
+
+    container.innerHTML = '<p class="text-muted mt-3">Issuer Split — connect API endpoint here.</p>';
+    $('#modal_loading').modal('hide');
+}
+
+function load_dates() {
+    var container = document.getElementById('dates_table');
+    container.innerHTML = '';
+    var val_date = document.getElementById("valuation_date").value;
+
+    // TODO: replace URL with the salient dates endpoint
+    // var url = '/fast/equities/equity-salient-dates?val_date=' + val_date + '&output=json';
+    // $.getJSON(url, function(data) { ... }).always(...);
+
+    container.innerHTML = '<p class="text-muted mt-3">Salient Dates — connect API endpoint here.</p>';
+    $('#modal_loading').modal('hide');
+}
+
+// Map tab target IDs → loader functions
+var TAB_LOADERS = {
+    '#tab-equity-exposure': load_equity_exposure,
+    '#tab-cover':           load_cover,
+    '#tab-alpha':           load_alpha,
+    '#tab-issuer':          load_issuer,
+    '#tab-dates':           load_dates
+};
+
+// Called when the date picker changes – reloads whichever tab is active
+function reloadActiveTab() {
+    var activeTarget = $('#mainTabs .f-nav-link.active').attr('data-bs-target');
+    if (!activeTarget) activeTarget = '#tab-equity-exposure';
+    $('#modal_loading').modal('show');
+    TAB_LOADERS[activeTarget]();
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────
+
 $(document).ready(function() {
-    update_tables();
+
+    // Restore last-visited tab (falls back to Equity Exposure)
+    var lastTab = localStorage.getItem('lastEquityTab');
+    if (lastTab && TAB_LOADERS[lastTab]) {
+        $('#mainTabs [data-bs-target="' + lastTab + '"]').tab('show');
+    }
+
+    // Load data whenever a tab becomes visible
+    $('#mainTabs a[data-bs-toggle="tab"]').on('shown.bs.tab', function(e) {
+        var target = $(e.target).attr('data-bs-target');
+        localStorage.setItem('lastEquityTab', target);
+        $('#modal_loading').modal('show');
+        TAB_LOADERS[target]();
+        // Re-adjust any visible DataTable columns
+        $($.fn.dataTable.tables(true)).DataTable().columns.adjust();
+    });
+
+    // Initial load for the active tab
+    $('#modal_loading').modal('show');
+    var initial = localStorage.getItem('lastEquityTab') || '#tab-equity-exposure';
+    TAB_LOADERS[initial]();
+
 });
 
 </script>
