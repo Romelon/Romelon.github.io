@@ -595,6 +595,151 @@ def compute_share_level_exposures(db_engines: dict, val_date: str) -> tuple:
 # =============================================================================
 
 
+def equity_cover_positioning(db_engines: dict, val_date: str) -> dict:
+    """Return equity cover positioning data grouped by strategy for the Cover tab.
+
+    Cover ratio is defined as physical equity / total equity — i.e. the
+    proportion of each fund's equity exposure that is held physically rather
+    than synthetically through derivatives. A ratio of 1.0 means the entire
+    equity exposure is in physical shares; a ratio of 0.0 means it is fully
+    synthetic.
+
+    Each strategy group (CISCA PA, REG28 PA, Global) gets its own column
+    layout because the relevant metrics differ by regulatory context:
+
+    * CISCA PA  — unit trusts.  Shows the full derivative breakdown (futures,
+                  TRS, ELN) alongside the cover ratio and un-equitised cash.
+    * REG28 PA  — pension funds.  Adds an equity headroom column (75% Reg28
+                  limit minus actual total equity) so exposure-to-limit
+                  utilisation is immediately visible.
+    * Global    — offshore/MSCI-benchmarked funds.  ELN column is omitted
+                  (not used in offshore mandates); otherwise mirrors CISCA PA.
+
+    Args:
+        db_engines: A dictionary of SQLAlchemy engines keyed by name. Required
+            keys are 'prime_eagle' and 'prime_equities'. Use
+            ``ppym.data.db.create_engine_multi()`` to create it.
+        val_date: Valuation date in YYYY-MM-DD format. Required.
+
+    Returns:
+        Dict with two keys:
+
+        * ``'data'`` — dict keyed by strategy name.  Each value is a list of
+          row dicts ready for DataTables.  Common fields per row:
+          portfolio_code, portfolio_name, vehicle, fund_size, total_equity,
+          physical, derivatives, futures, trs, notes, Un-equitised,
+          cover_ratio, strategy, datestamp (ISO-8601 string).
+          REG28 PA rows also include equity_headroom.
+
+        * ``'columns'`` — dict keyed by strategy name.  Each value is a list
+          of DataTables column-definition dicts ``{title, data}`` in column
+          order, matching the fields present in the corresponding data rows.
+
+    Raises:
+        RuntimeError: If 'prime_eagle' or 'prime_equities' is missing from
+            db_engines.
+
+    Example:
+        >>> import ppym.data.db as pimdb
+        >>> db_engines = pimdb.create_engine_multi(
+        ...     ['prime_eagle', 'prime_equities'], user)
+        >>> result = equity_cover_positioning(db_engines, '2025-01-09')
+        >>> result['data']['CISCA PA'][0]
+        {'portfolio_code': 'PCEQTF', 'total_equity': 0.993,
+         'physical': 0.157, 'cover_ratio': 0.158, ...}
+        >>> [c['title'] for c in result['columns']['REG28 PA']]
+        ['Fund Code', 'Fund Name', ..., 'Headroom (75%)', ..., 'Cover']
+
+    Owner:
+        Romelon Chetty
+    """
+    validate_db_engines(db_engines, ["prime_eagle", "prime_equities"])
+
+    df = equity_beta_positioning(db_engines, val_date)
+
+    # Cover ratio: fraction of equity exposure held as physical shares.
+    # Clipped to [0, 1] to guard against edge cases (e.g. negative physical).
+    df["cover_ratio"] = (
+        (df["physical"] / df["total_equity"])
+        .fillna(0)
+        .clip(0, 1)
+        .round(3)
+    )
+
+    # REG28 equity limit is 75%; headroom = room remaining before the cap.
+    df["equity_headroom"] = (0.75 - df["total_equity"]).round(3)
+
+    # Datestamp → ISO string so JSON serialisation is unambiguous.
+    if pd.api.types.is_datetime64_any_dtype(df["datestamp"]):
+        df["datestamp"] = df["datestamp"].dt.strftime("%Y-%m-%d")
+
+    # ------------------------------------------------------------------
+    # Column definitions per strategy (DataTables {title, data} format)
+    # ------------------------------------------------------------------
+    _COMMON_HEAD = [
+        {"title": "Fund Code",     "data": "portfolio_code"},
+        {"title": "Fund Name",     "data": "portfolio_name"},
+        {"title": "Vehicle",       "data": "vehicle"},
+        {"title": "Fund Size (Rm)","data": "fund_size"},
+        {"title": "Total Equity",  "data": "total_equity"},
+        {"title": "Physical",      "data": "physical"},
+        {"title": "Derivatives",   "data": "derivatives"},
+        {"title": "Futures",       "data": "futures"},
+        {"title": "TRS",           "data": "trs"},
+    ]
+    _COMMON_TAIL = [
+        {"title": "Un-Equitised",  "data": "Un-equitised"},
+        {"title": "Cover",         "data": "cover_ratio"},
+        {"title": "Strategy",      "data": "strategy"},     # hidden
+        {"title": "Date",          "data": "datestamp"},    # hidden
+    ]
+
+    columns_by_strategy = {
+        # CISCA PA: includes ELN / notes column
+        "CISCA PA": (
+            _COMMON_HEAD
+            + [{"title": "ELN / Notes", "data": "notes"}]
+            + _COMMON_TAIL
+        ),
+        # REG28 PA: replaces ELN with equity headroom (75% limit)
+        "REG28 PA": (
+            _COMMON_HEAD
+            + [
+                {"title": "ELN / Notes",   "data": "notes"},
+                {"title": "Headroom (75%)", "data": "equity_headroom"},
+            ]
+            + _COMMON_TAIL
+        ),
+        # Global: offshore mandates do not use ELN; omit notes column
+        "Global": _COMMON_HEAD + _COMMON_TAIL,
+    }
+
+    # ------------------------------------------------------------------
+    # Fields to include in each strategy's row dicts
+    # ------------------------------------------------------------------
+    _COMMON_FIELDS = [
+        "portfolio_code", "portfolio_name", "vehicle", "fund_size",
+        "total_equity", "physical", "derivatives", "futures", "trs",
+        "Un-equitised", "cover_ratio", "strategy", "datestamp",
+    ]
+
+    fields_by_strategy = {
+        "CISCA PA": _COMMON_FIELDS[:9] + ["notes"] + _COMMON_FIELDS[9:],
+        "REG28 PA": _COMMON_FIELDS[:9] + ["notes", "equity_headroom"] + _COMMON_FIELDS[9:],
+        "Global":   _COMMON_FIELDS,
+    }
+
+    data_out = {}
+    columns_out = {}
+
+    for strategy, fields in fields_by_strategy.items():
+        subset = df[df["strategy"] == strategy][fields].copy()
+        data_out[strategy]    = subset.to_dict(orient="records")
+        columns_out[strategy] = columns_by_strategy[strategy]
+
+    return {"data": data_out, "columns": columns_out}
+
+
 def equity_beta_positioning(db_engines: dict, val_date: str) -> pd.DataFrame:
     """Return equity beta exposures split by instrument type for each fund.
 
